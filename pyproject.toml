@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "settleup"
+version = "0.1.0"
+description = "Settle Up"
+authors = ["Pradeep Gowda <btbytes@gmail.com>"]
+license = "AGPLv3"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+django = "^4.2.1"
+django-components = "^0.28.1"
+hisak-idtools = "^0.1.1"
+qrcode = "^7.4.2"
+django-htmx = "^1.14.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

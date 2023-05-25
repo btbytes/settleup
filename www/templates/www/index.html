@@ -1,0 +1,57 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <link rel="icon" href="https://via.placeholder.com/70x70">
+    <link rel="stylesheet" href="/static/css/mvp.css">
+    <script src="/static/js/htmx.min.js"></script>
+    <script src="/static/django-htmx.js"></script>
+
+    <meta charset="utf-8">
+    <meta name="description" content="My description">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% component_css_dependencies %}
+    <title>My title</title>
+</head>
+
+<body>
+    <header>
+        <nav>
+            
+        </nav>
+        <h1>Settleup</h1>
+        <p>Playing a game? <a href="">Start here</a></p>
+        <p>{{date}}</p> 
+    </header>
+    <main>
+
+        <section>
+            <form>
+                <header>
+                    <h2>Form title</h2>
+                </header>
+                <label for="input1">Input label:</label>
+                <input type="text" id="input1" name="input1" size="20" placeholder="Input1">
+                <label for="select1">Select label:</label>
+                <select id="select1">
+                    <option value="option1">option1</option>
+                    <option value="option2">option2</option>
+                </select>
+                <label for="textarea1">Textarea label:</label>
+                <textarea cols="40" rows="5" id="textarea1"></textarea>
+                <button type="submit">Submit</button>
+            </form>
+        </section>
+    </main>
+    <footer>
+        <hr>
+        <p>
+            <small>Contact <a href="https://andybrewer.github.io/mvp/">info</a></small>
+        </p>
+    </footer>
+    {% component_js_dependencies %}
+
+</body>
+
+</html>

@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "django_components",
     "django_components.safer_staticfiles",
     "django_htmx",
+    "www",
 ]
 
 MIDDLEWARE = [
@@ -128,16 +129,10 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/4.2/howto/static-files/
-
+STATIC_URL = "static/"
 STATICFILES_DIRS = [
     BASE_DIR / "components",
 ]
-
-STATIC_URL = "static/"
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
-
+STATIC_ROOT = BASE_DIR / "staticfiles"
+print(STATIC_ROOT)
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

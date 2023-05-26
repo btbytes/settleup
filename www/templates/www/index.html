@@ -21,11 +21,17 @@
             
         </nav>
         <h1>Settleup</h1>
-        <p>Playing a game? <a href="">Start here</a></p>
-        <p>{{date}}</p> 
+        <p>Playing a game?</p> 
+         
     </header>
     <main>
+        <section>
+            <div hx-target="this" hx-swap="outerHTML">
+                <button hx-get="/newtable" class="btn btn-primary">Start here</button>
+            </div>
+        </section>
 
+        
         <section>
             <form>
                 <header>

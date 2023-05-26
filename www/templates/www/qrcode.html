@@ -1,0 +1,6 @@
+{% load qr_code %}
+<div id="qr-{{table_id}}"" class="qrcode">
+<p>{{url}}</p>
+
+{% qr_from_text url size="M" border=4 %}
+</div>

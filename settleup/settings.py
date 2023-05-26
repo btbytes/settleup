@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "django_components",
     "django_components.safer_staticfiles",
     "django_htmx",
+    "qr_code",
     "www",
 ]
 

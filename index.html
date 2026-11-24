@@ -1,0 +1,3243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settle Up: Poker Buy-In and Settlement Ledger</title>
+  <meta name="description" content="Record poker home-game buy-ins and cash-out chips, apply fair adjustments for chip discrepancies, and compute minimal final settlements locally in your browser.">
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    (function () {
+      try {
+        var saved = window.localStorage.getItem("settleup.theme.v1");
+        if (saved === "dark" || saved === "light") {
+          document.documentElement.dataset.theme = saved;
+        } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      } catch (_err) {
+        // Ignore storage errors
+      }
+    })();
+  </script>
+  <style>
+/* Hallmark · shape: app screen · genre: modern-minimal · theme: Coral · deal: manual · posture: restrained · contrast: pass · v2.0.0 */
+/* Hallmark · pre-emit critique: P4 H5 E5 S5 R5 V4 · weakest: P, calculator screens easily drift into generic SaaS chrome; anchored in Coral felt-desk stationery, letterpress controls, and a dark ink settlement board */
+
+:root {
+  color-scheme: light;
+  --color-paper: oklch(97% 0.006 55);
+  --color-paper-2: oklch(94.5% 0.007 55);
+  --color-paper-3: oklch(91.5% 0.009 55);
+  --color-desk: oklch(94.3% 0.008 64);
+  --color-cotton: oklch(98.8% 0.0045 80);
+  --color-ink: oklch(21% 0.012 38);
+  --color-ink-2: oklch(29% 0.013 40);
+  --color-print: oklch(23% 0.012 38);
+  --color-muted: oklch(46% 0.013 45);
+  --color-rule: oklch(87% 0.009 55);
+  --color-rule-2: oklch(79% 0.011 55);
+  --color-accent: oklch(74% 0.125 30);
+  --color-accent-ink: oklch(21% 0.012 38);
+  --color-accent-2: oklch(49% 0.165 29);
+  --color-paid: oklch(50% 0.155 31);
+  --color-focus: oklch(50% 0.17 30);
+  --color-focus-board: oklch(79% 0.13 32);
+  --color-board: oklch(22% 0.011 40);
+  --color-board-2: oklch(27% 0.012 40);
+  --color-board-rule: oklch(34% 0.012 42);
+  --color-board-type: oklch(96.5% 0.006 70);
+  --color-board-muted: oklch(76% 0.010 58);
+  --color-positive: oklch(39% 0.11 152);
+  --color-positive-bg: oklch(95% 0.025 152);
+  --color-positive-board: oklch(80% 0.115 152);
+  --color-negative: oklch(43% 0.155 26);
+  --color-negative-bg: oklch(95.5% 0.028 28);
+  --color-negative-board: oklch(78% 0.13 28);
+  --color-warning: oklch(44% 0.115 65);
+  --color-warning-bg: oklch(95.5% 0.032 72);
+  --color-warning-board: oklch(83% 0.115 74);
+  --color-error: oklch(43% 0.165 25);
+  --color-error-bg: oklch(96% 0.026 26);
+  --color-scrim: oklch(20% 0.012 40 / 0.52);
+
+  --shade: 32% 0.03 50;
+  --lit: 99% 0.005 80;
+  --deep: 7% 0.01 40;
+
+  --edge-stock:
+    inset 0 1px 0 oklch(var(--lit) / 0.9),
+    inset 0 -1px 0 oklch(var(--shade) / 0.07),
+    0 0 0 0.5px oklch(var(--shade) / 0.22),
+    0 1px 0 oklch(var(--shade) / 0.12);
+  --cast-stock: 6px 5px 10px -6px oklch(var(--shade) / 0.28);
+  --cast-stock-lift: 10px 8px 16px -8px oklch(var(--shade) / 0.30);
+  --cast-board: 8px 8px 18px -10px oklch(var(--deep) / 0.45);
+  --press-groove:
+    inset 1px 1.5px 2px oklch(var(--shade) / 0.16),
+    inset -1px -1px 0 oklch(var(--lit) / 0.9),
+    0 0 0 0.5px oklch(var(--shade) / 0.2);
+
+  --font-display: "General Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-body: var(--font-display);
+  --font-outlier: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --text-xs: 0.875rem;
+  --text-sm: 0.9375rem;
+  --text-base: 1rem;
+  --text-md: 1.1875rem;
+  --text-lg: 1.4375rem;
+  --text-xl: 1.6875rem;
+  --text-2xl: 2rem;
+
+  --tracking-display: -0.025em;
+  --display-weight: 600;
+
+  --space-3xs: 2px;
+  --space-2xs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+  --space-2xl: 64px;
+
+  --radius-input: 6px;
+  --radius-stock: 8px;
+  --radius-card: 8px;
+  --radius-groove: 10px;
+  --radius-pill: 999px;
+
+  --rule-hair: 1px;
+  --control-h: 42px;
+  --container-max: 640px;
+
+  --dur-micro: 120ms;
+  --dur-short: 200ms;
+  --dur-long: 340ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --z-base: 1;
+  --z-raised: 10;
+  --z-sticky-nav: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-paper: oklch(20.5% 0.010 42);
+  --color-paper-2: oklch(24.5% 0.011 42);
+  --color-paper-3: oklch(29% 0.012 42);
+  --color-desk: oklch(15% 0.009 42);
+  --color-cotton: oklch(21.5% 0.010 42);
+  --color-ink: oklch(95.5% 0.006 68);
+  --color-ink-2: oklch(86% 0.008 62);
+  --color-print: oklch(92% 0.007 65);
+  --color-muted: oklch(71% 0.010 56);
+  --color-rule: oklch(31% 0.011 44);
+  --color-rule-2: oklch(40% 0.012 45);
+  --color-accent: oklch(76% 0.13 30);
+  --color-accent-ink: oklch(17% 0.012 38);
+  --color-accent-2: oklch(76% 0.13 30);
+  --color-paid: oklch(75% 0.135 30);
+  --color-focus: oklch(79% 0.13 32);
+  --color-focus-board: oklch(79% 0.13 32);
+  --color-board: oklch(12.5% 0.009 40);
+  --color-board-2: oklch(18% 0.010 40);
+  --color-board-rule: oklch(27% 0.011 42);
+  --color-board-type: oklch(96.5% 0.006 70);
+  --color-board-muted: oklch(74% 0.010 58);
+  --color-positive: oklch(76% 0.12 152);
+  --color-positive-bg: oklch(24% 0.035 152);
+  --color-positive-board: oklch(80% 0.115 152);
+  --color-negative: oklch(74% 0.14 26);
+  --color-negative-bg: oklch(25% 0.045 26);
+  --color-negative-board: oklch(78% 0.13 28);
+  --color-warning: oklch(81% 0.12 72);
+  --color-warning-bg: oklch(25% 0.04 68);
+  --color-warning-board: oklch(83% 0.115 74);
+  --color-error: oklch(75% 0.15 25);
+  --color-error-bg: oklch(25% 0.05 25);
+  --color-scrim: oklch(8% 0.008 40 / 0.72);
+
+  --edge-stock:
+    inset 0 1px 0 oklch(100% 0 0 / 0.07),
+    0 0 0 1px oklch(100% 0 0 / 0.08);
+  --cast-stock: 0 6px 16px -8px oklch(0% 0 0 / 0.55);
+  --cast-stock-lift: 0 10px 22px -8px oklch(0% 0 0 / 0.65);
+  --cast-board:
+    0 10px 24px -10px oklch(0% 0 0 / 0.7),
+    0 0 0 1px oklch(100% 0 0 / 0.09);
+  --press-groove:
+    inset 0 1px 3px oklch(0% 0 0 / 0.45),
+    0 0 0 1px oklch(100% 0 0 / 0.07);
+}
+
+:root[data-theme="dark"] .btn--primary {
+  background-color: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+@media (hover: hover) {
+  :root[data-theme="dark"] .btn--primary:hover:not(:disabled) {
+    background-color: oklch(80% 0.13 30);
+  }
+}
+
+:root[data-theme="dark"] .brand-mark {
+  background-color: var(--color-board-2);
+  box-shadow: var(--edge-stock), var(--cast-stock);
+}
+
+:root[data-theme="dark"] .input {
+  border-color: var(--color-rule-2);
+}
+
+:root[data-theme="dark"] .ledger-table .input {
+  border-color: transparent;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  overflow-x: clip;
+  font-size: 100%;
+  scrollbar-color: var(--color-rule-2) var(--color-desk);
+}
+
+body {
+  overflow-x: clip;
+  margin: 0;
+  min-height: 100dvh;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--color-print);
+  background-color: var(--color-desk);
+  background-image:
+    radial-gradient(90% 110% at 0% 15%, var(--color-paper), transparent 64%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  caret-color: var(--color-accent-2);
+}
+
+::selection {
+  background-color: color-mix(in oklab, var(--color-accent) 32%, transparent);
+  color: var(--color-ink);
+}
+
+h1, h2, h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: var(--display-weight);
+  letter-spacing: var(--tracking-display);
+  line-height: 1.12;
+  color: var(--color-ink);
+  overflow-wrap: break-word;
+  min-width: 0;
+  text-wrap: balance;
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--color-rule-2);
+  text-underline-offset: 0.2em;
+  transition: text-decoration-color var(--dur-micro) var(--ease-out);
+}
+
+@media (hover: hover) {
+  a:hover {
+    text-decoration-color: var(--color-accent-2);
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.fig {
+  font-family: var(--font-outlier);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell {
+  width: 100%;
+  max-width: var(--container-max);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  margin-inline: auto;
+  padding-inline: var(--space-sm);
+  padding-bottom: var(--space-lg);
+}
+
+@media (min-width: 48rem) {
+  .app-shell {
+    padding-inline: var(--space-md);
+  }
+}
+
+.app-footer {
+  margin-top: auto;
+  padding-top: var(--space-sm);
+  border-top: var(--rule-hair) solid var(--color-rule);
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs) var(--space-md);
+  padding-block: var(--space-sm);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+  margin-bottom: var(--space-md);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: var(--radius-input);
+  background-color: var(--color-board);
+  color: var(--color-board-type);
+  box-shadow: var(--cast-stock);
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.brand-title {
+  font-size: var(--text-lg);
+  line-height: 1.1;
+}
+
+.brand-sub {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  line-height: 1.25;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2xs);
+  min-height: 40px;
+  padding: 0 var(--space-sm);
+  border: 0;
+  border-radius: var(--radius-input);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    transform var(--dur-micro) var(--ease-out),
+    box-shadow var(--dur-short) var(--ease-out),
+    background-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
+}
+
+.btn::before {
+  content: "";
+  position: absolute;
+  inset: -6px 0;
+}
+
+.btn svg {
+  flex-shrink: 0;
+}
+
+.btn--card {
+  background-color: var(--color-cotton);
+  color: var(--color-print);
+  box-shadow: var(--edge-stock), var(--cast-stock);
+}
+
+@media (hover: hover) {
+  .btn--card:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: var(--edge-stock), var(--cast-stock-lift);
+  }
+}
+
+.btn--card:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: var(--edge-stock);
+}
+
+.btn--primary {
+  background-color: var(--color-board);
+  color: var(--color-board-type);
+  box-shadow: var(--cast-stock);
+}
+
+@media (hover: hover) {
+  .btn--primary:hover:not(:disabled) {
+    background-color: var(--color-board-2);
+    transform: translateY(-1px);
+    box-shadow: var(--cast-stock-lift);
+  }
+}
+
+.btn--primary:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.btn--quiet {
+  background-color: transparent;
+  color: var(--color-ink-2);
+  padding-inline: var(--space-sm);
+  box-shadow: none;
+}
+
+@media (hover: hover) {
+  .btn--quiet:hover:not(:disabled) {
+    background-color: var(--color-paper-2);
+    color: var(--color-ink);
+  }
+}
+
+.btn--quiet:active:not(:disabled) {
+  background-color: var(--color-paper-3);
+}
+
+.btn--icon {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: var(--radius-input);
+  background-color: transparent;
+  color: var(--color-muted);
+}
+
+.btn--icon::before {
+  inset: -6px;
+}
+
+@media (hover: hover) {
+  .btn--icon:hover:not(:disabled) {
+    background-color: var(--color-negative-bg);
+    color: var(--color-negative);
+  }
+}
+
+.btn--icon:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-md);
+  align-items: start;
+  margin-bottom: var(--space-xl);
+}
+
+.sheet {
+  background-color: var(--color-cotton);
+  background-image: linear-gradient(110deg, var(--color-cotton), var(--color-paper) 100%);
+  color: var(--color-print);
+  border-radius: var(--radius-stock);
+  box-shadow: var(--edge-stock), var(--cast-stock);
+  padding: var(--space-md);
+  min-width: 0;
+}
+
+@media (max-width: 29.99rem) {
+  .sheet,
+  .board {
+    padding: 14px;
+  }
+}
+
+.sheet-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs) var(--space-sm);
+  padding-bottom: var(--space-sm);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.sheet-title {
+  font-size: var(--text-md);
+}
+
+.rate-note {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.rate-editor {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.currency-field {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.currency-prefix {
+  position: absolute;
+  left: var(--space-xs);
+  font-family: var(--font-outlier);
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  pointer-events: none;
+}
+
+.input--rate {
+  width: 84px;
+  height: 36px;
+  padding-left: 1.35rem;
+  padding-right: var(--space-xs);
+  font-size: var(--text-base);
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.input--rate::-webkit-outer-spin-button,
+.input--rate::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.meta-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-xs) var(--space-md);
+  padding-block: var(--space-xs);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+@media (min-width: 30rem) {
+  .meta-row {
+    grid-template-columns: minmax(0, 12.5rem) minmax(0, 1fr);
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.field-label {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.input {
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--color-muted);
+  border-radius: var(--radius-input);
+  background-color: var(--color-cotton);
+  color: var(--color-ink);
+  font-size: var(--text-base);
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  transition:
+    background-color var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out);
+}
+
+.input::placeholder {
+  color: var(--color-muted);
+}
+
+@media (hover: hover) {
+  .input:hover:not(:disabled) {
+    background-color: var(--color-paper-2);
+  }
+}
+
+.input:focus-visible {
+  border-color: var(--color-ink-2);
+  outline-color: var(--color-focus);
+  background-color: var(--color-cotton);
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--color-error);
+  background-color: var(--color-error-bg);
+}
+
+.input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.input--num {
+  font-family: var(--font-outlier);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding-inline: var(--space-xs);
+}
+
+.ledger-wrap {
+  padding-top: var(--space-xs);
+}
+
+.ledger-table {
+  width: 100%;
+  table-layout: auto;
+  border-collapse: collapse;
+  border: var(--rule-hair) solid var(--color-rule-2);
+  background-color: var(--color-cotton);
+}
+
+.ledger-table thead th {
+  padding: var(--space-xs) var(--space-xs);
+  background-color: var(--color-paper-2);
+  border-right: var(--rule-hair) solid var(--color-rule);
+  border-bottom: var(--rule-hair) solid var(--color-rule-2);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-ink-2);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ledger-table thead th:last-child {
+  border-right: 0;
+  width: 34px;
+  padding: 0;
+}
+
+.ledger-table thead th.col-num,
+.ledger-table tbody td.col-num,
+.ledger-table tfoot td.col-num {
+  text-align: right;
+}
+
+.ledger-table tbody tr {
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.ledger-table tbody td {
+  padding: 0;
+  border-right: var(--rule-hair) solid var(--color-rule);
+  vertical-align: middle;
+}
+
+.ledger-table tbody td:last-child {
+  border-right: 0;
+  width: 34px;
+  text-align: center;
+}
+
+.ledger-table .input {
+  height: 42px;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  padding: 0 var(--space-xs);
+  font-size: var(--text-base);
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+}
+
+.ledger-table .input--num {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.ledger-table .input--num::-webkit-outer-spin-button,
+.ledger-table .input--num::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+@media (hover: hover) {
+  .ledger-table .input:hover:not(:disabled) {
+    background-color: var(--color-paper-2);
+  }
+}
+
+.ledger-table .input:focus-visible {
+  background-color: var(--color-cotton);
+  outline-color: var(--color-focus);
+}
+
+.ledger-table .input[aria-invalid="true"] {
+  background-color: var(--color-error-bg);
+  box-shadow: inset 0 0 0 1.5px var(--color-error);
+}
+
+.ledger-table .btn--icon {
+  width: 100%;
+  min-width: 34px;
+  min-height: 42px;
+  height: 42px;
+  border-radius: 0;
+}
+
+.col-name {
+  width: 100%;
+  min-width: 82px;
+}
+
+.col-buyin {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.col-cashout {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.ledger-table td[data-cell="buyIn"] .input {
+  width: 56px;
+}
+
+.ledger-table td[data-cell="cashOut"] .input {
+  width: 78px;
+}
+
+.col-calc {
+  width: 1%;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--color-ink-2);
+}
+
+.col-net {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.ledger-table tbody td.col-calc {
+  padding: 0 var(--space-xs);
+  background-color: var(--color-paper);
+}
+
+.cell-error {
+  padding: var(--space-3xs) var(--space-xs);
+  font-size: var(--text-xs);
+  line-height: 1.2;
+  color: var(--color-error);
+  background-color: var(--color-error-bg);
+}
+
+.cell-error:empty {
+  display: none;
+}
+
+.ledger-table tfoot td {
+  padding: var(--space-2xs) var(--space-xs);
+  background-color: var(--color-paper-2);
+  border-top: var(--rule-hair) solid var(--color-rule-2);
+  border-right: var(--rule-hair) solid var(--color-rule);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+
+.ledger-table tfoot td:last-child {
+  border-right: 0;
+}
+
+.val-pos,
+.ledger-table tfoot td.val-pos {
+  color: var(--color-positive);
+}
+
+.val-neg,
+.ledger-table tfoot td.val-neg {
+  color: var(--color-negative);
+}
+
+.val-warn,
+.ledger-table tfoot td.val-warn {
+  color: var(--color-warning);
+}
+
+.val-zero,
+.ledger-table tfoot td.val-zero {
+  color: var(--color-muted);
+}
+
+.empty-roster {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-xs);
+  padding: var(--space-md) 0;
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.empty-roster-title {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-ink);
+}
+
+.empty-roster-desc {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  max-width: 52ch;
+}
+
+@media (max-width: 35.99rem) {
+  .col-hide-sm {
+    display: none;
+  }
+
+  .ledger-table thead th,
+  .ledger-table tbody td.col-calc,
+  .ledger-table tfoot td {
+    padding-inline: 6px;
+  }
+
+  .ledger-table td[data-cell="buyIn"] .input {
+    width: 48px;
+  }
+
+  .ledger-table td[data-cell="cashOut"] .input {
+    width: 66px;
+  }
+
+  .ledger-table .input {
+    font-size: var(--text-base);
+    height: 42px;
+    padding: 0 6px;
+  }
+
+  .ledger-table .btn--icon {
+    min-height: 42px;
+    height: 42px;
+  }
+}
+
+.ledger-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding-top: var(--space-md);
+  margin-top: 0;
+}
+
+@media (max-width: 31.99rem) {
+  .ledger-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ledger-footer-left {
+    justify-content: space-between;
+  }
+
+  #calculateBtn {
+    width: 100%;
+    min-height: 44px;
+    font-size: var(--text-base);
+  }
+}
+
+.ledger-footer-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.save-status {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+.form-feedback {
+  margin-top: var(--space-xs);
+  font-size: var(--text-xs);
+  color: var(--color-error);
+}
+
+.form-feedback:empty {
+  display: none;
+}
+
+.undo-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+  margin-top: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-input);
+  background-color: var(--color-paper-2);
+  box-shadow: var(--press-groove);
+  font-size: var(--text-xs);
+}
+
+.undo-bar[hidden] {
+  display: none;
+}
+
+.results-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+#computedResults {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+#computedResults[hidden] {
+  display: none;
+}
+
+.board {
+  background-color: var(--color-board);
+  color: var(--color-board-type);
+  border-radius: var(--radius-stock);
+  box-shadow: var(--cast-board);
+  padding: var(--space-md);
+  min-width: 0;
+}
+
+.board :focus-visible {
+  outline-color: var(--color-focus-board);
+}
+
+.board-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-xs);
+  padding-bottom: var(--space-sm);
+  border-bottom: var(--rule-hair) solid var(--color-board-rule);
+}
+
+.board-title {
+  color: var(--color-board-type);
+  font-size: var(--text-md);
+}
+
+.board-meta {
+  font-size: var(--text-xs);
+  color: var(--color-board-muted);
+  margin-top: var(--space-3xs);
+}
+
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-3xs) var(--space-xs);
+  border-radius: var(--radius-input);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  border: 1.5px solid var(--color-accent);
+  color: var(--color-accent);
+  white-space: nowrap;
+}
+
+.stamp--stale {
+  border-color: var(--color-warning-board);
+  color: var(--color-warning-board);
+}
+
+.summary-stats {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding-top: var(--space-xs);
+}
+
+@media (min-width: 28rem) {
+  .summary-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding-top: var(--space-sm);
+  }
+}
+
+.stat {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: var(--space-sm);
+  row-gap: 2px;
+  align-items: baseline;
+  padding-block: var(--space-xs);
+  border-top: var(--rule-hair) solid var(--color-board-rule);
+  min-width: 0;
+}
+
+.stat:first-child {
+  border-top: 0;
+}
+
+.stat-label {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: var(--text-xs);
+  color: var(--color-board-muted);
+  white-space: nowrap;
+}
+
+.stat-value {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  font-family: var(--font-outlier);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-lg);
+  font-weight: 500;
+  line-height: 1.15;
+  color: var(--color-board-type);
+}
+
+.stat-detail {
+  grid-column: 1;
+  grid-row: 2;
+  font-size: var(--text-xs);
+  color: var(--color-board-muted);
+}
+
+@media (min-width: 28rem) {
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3xs);
+    padding-block: 0;
+    padding-inline: var(--space-sm);
+    border-top: 0;
+    border-left: var(--rule-hair) solid var(--color-board-rule);
+  }
+
+  .stat:first-child {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .stat:last-child {
+    padding-right: 0;
+  }
+
+  .stat-value {
+    align-self: auto;
+  }
+}
+
+.stat-value--pos {
+  color: var(--color-positive-board);
+}
+
+.stat-value--warn {
+  color: var(--color-warning-board);
+}
+
+.stat-value--neg {
+  color: var(--color-negative-board);
+}
+
+.empty-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.empty-results-copy {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  max-width: 54ch;
+}
+
+.rules-dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3xs);
+  margin: 0;
+  padding-top: var(--space-sm);
+  border-top: var(--rule-hair) solid var(--color-rule);
+  font-size: var(--text-sm);
+}
+
+.rules-dl dt {
+  font-weight: 500;
+  color: var(--color-ink);
+  margin-top: var(--space-xs);
+}
+
+.rules-dl dt:first-child {
+  margin-top: 0;
+}
+
+.rules-dl dd {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+@media (min-width: 30rem) {
+  .rules-dl {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-xs) var(--space-sm);
+  }
+
+  .rules-dl dt {
+    margin-top: 0;
+  }
+}
+
+.tx-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding-bottom: var(--space-md);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.tx-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--space-xs);
+}
+
+.tx-table thead th {
+  padding: var(--space-xs) var(--space-xs) var(--space-sm);
+  border-bottom: var(--rule-hair) solid var(--color-rule-2);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-muted);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tx-table thead th:first-child {
+  padding-left: 0;
+}
+
+.tx-table thead th:last-child {
+  padding-right: 0;
+  text-align: right;
+}
+
+.tx-table thead th.col-pays {
+  text-align: right;
+}
+
+.tx-table tbody tr {
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+  transition: opacity var(--dur-micro) var(--ease-out);
+}
+
+.tx-table tbody tr.is-paid {
+  opacity: 0.6;
+}
+
+.tx-table tbody td {
+  padding: var(--space-sm) var(--space-xs);
+  font-size: var(--text-base);
+  vertical-align: middle;
+}
+
+.tx-table tbody td:first-child {
+  padding-left: 0;
+  font-weight: 500;
+  color: var(--color-ink);
+}
+
+.tx-table tbody td.col-pays {
+  text-align: right;
+  font-family: var(--font-outlier);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+
+.tx-table tbody td.col-receiver {
+  font-weight: 500;
+  color: var(--color-ink);
+}
+
+.tx-table tbody td.col-check {
+  padding-right: 0;
+  text-align: right;
+  width: 64px;
+}
+
+.paid-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.paid-toggle input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--color-paid);
+  cursor: pointer;
+}
+
+.paid-toggle-text {
+  font-weight: 500;
+}
+
+.is-paid .paid-toggle-text {
+  color: var(--color-paid);
+}
+
+.tx-exact {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--color-muted);
+  line-height: 1.25;
+}
+
+.tx-rounding-note {
+  margin-top: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border-left: 2px solid var(--color-warning);
+  border-radius: 0 var(--radius-input) var(--radius-input) 0;
+  background-color: var(--color-warning-bg);
+  color: var(--color-ink-2);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.tx-rounding-note strong {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+.tx-empty {
+  padding-block: var(--space-md);
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.explain-section {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: var(--rule-hair) solid var(--color-rule);
+}
+
+.explain-title {
+  font-size: var(--text-md);
+  margin-bottom: var(--space-sm);
+}
+
+.explain-list {
+  margin: 0;
+  padding-left: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--color-ink-2);
+}
+
+.explain-list li {
+  max-width: 62ch;
+}
+
+.breakdown-details {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: var(--rule-hair) solid var(--color-rule);
+}
+
+.breakdown-details summary {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-ink);
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-2xs) 0;
+}
+
+.breakdown-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.breakdown-chevron {
+  transition: transform var(--dur-micro) var(--ease-out);
+}
+
+.breakdown-details[open] .breakdown-chevron {
+  transform: rotate(90deg);
+}
+
+.breakdown-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--space-sm);
+  font-size: var(--text-xs);
+}
+
+.breakdown-table th {
+  padding: var(--space-xs) var(--space-2xs);
+  border-bottom: var(--rule-hair) solid var(--color-rule-2);
+  text-align: left;
+  font-weight: 500;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.breakdown-table th.col-num,
+.breakdown-table td.col-num {
+  text-align: right;
+}
+
+.breakdown-table td {
+  padding: var(--space-xs) var(--space-2xs);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+  color: var(--color-ink-2);
+}
+
+.breakdown-table th:first-child,
+.breakdown-table td:first-child {
+  padding-left: 0;
+}
+
+.breakdown-table th:last-child,
+.breakdown-table td:last-child {
+  padding-right: 0;
+}
+
+.help-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(calc(100% - var(--space-lg)), 42rem);
+  max-height: min(86dvh, 44rem);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-stock);
+  background-color: var(--color-cotton);
+  color: var(--color-print);
+  box-shadow: var(--edge-stock), var(--cast-board);
+  overflow: hidden;
+}
+
+.help-dialog::backdrop {
+  background-color: var(--color-scrim);
+}
+
+.help-dialog-inner {
+  display: flex;
+  flex-direction: column;
+  max-height: min(86dvh, 44rem);
+}
+
+.help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.help-body {
+  padding: var(--space-lg);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  font-size: var(--text-sm);
+  color: var(--color-ink-2);
+}
+
+.help-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.help-block h3 {
+  font-size: var(--text-base);
+}
+
+.help-block p,
+.help-block li {
+  max-width: 62ch;
+}
+
+.help-block ol,
+.help-block ul {
+  margin: 0;
+  padding-left: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.help-sample-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-input);
+  background-color: var(--color-paper-2);
+  border: var(--rule-hair) solid var(--color-rule);
+}
+
+.help-sample-copy {
+  flex: 1 1 14rem;
+  font-size: var(--text-sm);
+  color: var(--color-ink-2);
+}
+
+.help-example {
+  padding: var(--space-md);
+  border-radius: var(--radius-input);
+  background-color: var(--color-paper-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.help-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-sm) var(--space-lg);
+  border-top: var(--rule-hair) solid var(--color-rule);
+}
+
+.noscript-banner {
+  margin-bottom: var(--space-md);
+  padding: var(--space-md);
+  border-radius: var(--radius-input);
+  background-color: var(--color-warning-bg);
+  color: var(--color-warning);
+  font-size: var(--text-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/>
+            <circle cx="12" cy="12" r="4.5"/>
+            <path d="M12 3v4.5M12 16.5V21M3 12h4.5M16.5 12H21"/>
+          </svg>
+        </span>
+        <div class="brand-text">
+          <h1 class="brand-title">Settle Up</h1>
+          <p class="brand-sub">Poker buy-in and final settlement ledger</p>
+        </div>
+      </div>
+
+      <nav class="topbar-actions" aria-label="Ledger tools">
+        <button type="button" class="btn btn--quiet" id="newGameBtn">New game</button>
+        <button type="button" class="btn btn--card" id="themeToggleBtn" aria-pressed="false" aria-label="Switch to dark theme">
+          <svg id="themeIconMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+          <svg id="themeIconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+          </svg>
+          <span id="themeToggleLabel">Dark</span>
+        </button>
+        <button type="button" class="btn btn--card" id="openHelpBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M9.5 9.25a2.6 2.6 0 0 1 5.05.85c0 1.65-2.55 2.15-2.55 3.65"/>
+            <circle cx="12" cy="17.2" r="0.6" fill="currentColor" stroke="none"/>
+          </svg>
+          Help
+        </button>
+      </nav>
+    </header>
+
+    <noscript>
+      <div class="noscript-banner">
+        JavaScript is required to calculate poker settlements and save your session in this browser.
+      </div>
+    </noscript>
+
+    <main class="workspace">
+      <section class="sheet" aria-labelledby="ledgerHeading">
+        <div class="sheet-header">
+          <h2 class="sheet-title" id="ledgerHeading">Game ledger</h2>
+          <div class="rate-editor">
+            <label class="rate-note" for="buyInDollarInput">1 buy-in = 100 chips =</label>
+            <span class="currency-field">
+              <span class="currency-prefix" aria-hidden="true">$</span>
+              <input class="input input--num input--rate" type="number" id="buyInDollarInput" name="buyInDollarInput" min="1" max="1000" step="0.01" inputmode="decimal" value="20" aria-label="Dollars per buy-in">
+            </span>
+          </div>
+        </div>
+
+        <form id="ledgerForm" novalidate>
+          <div class="meta-row">
+            <div class="field">
+              <label class="field-label" for="gameDate">Date</label>
+              <input class="input" type="date" id="gameDate" name="gameDate" autocomplete="off">
+            </div>
+            <div class="field">
+              <label class="field-label" for="gamePlace">Place</label>
+              <input class="input" type="text" id="gamePlace" name="gamePlace" placeholder="Friday table, Oak Street" maxlength="80" autocomplete="off">
+            </div>
+          </div>
+
+          <div class="ledger-wrap">
+            <div id="emptyRoster" class="empty-roster" hidden>
+              <p class="empty-roster-title">No players on the ledger yet.</p>
+              <p class="empty-roster-desc">Add at least two players with their buy-in count and ending chip count to calculate who pays whom.</p>
+              <button type="button" class="btn btn--card" id="emptyAddPlayerBtn">Add first player</button>
+            </div>
+
+            <table class="ledger-table" id="ledgerTable" aria-label="Player buy-ins and cash-outs">
+              <thead>
+                <tr>
+                  <th scope="col" class="col-name">Player</th>
+                  <th scope="col" class="col-num col-buyin">Buy-in</th>
+                  <th scope="col" class="col-num col-cashout">Cash-out</th>
+                  <th scope="col" class="col-num col-calc col-hide-sm">In $</th>
+                  <th scope="col" class="col-num col-calc col-hide-sm">Out $</th>
+                  <th scope="col" class="col-num col-calc col-net">Raw net</th>
+                  <th scope="col"><span class="sr-only">Remove player</span></th>
+                </tr>
+              </thead>
+              <tbody id="playerRows"></tbody>
+              <tfoot id="ledgerFoot">
+                <tr>
+                  <td id="footPlayers">0 players</td>
+                  <td class="col-num fig" id="footBuyInCount">0</td>
+                  <td class="col-num fig" id="footCashOutChips">0</td>
+                  <td class="col-num fig col-hide-sm" id="footBuyInDollars">$0.00</td>
+                  <td class="col-num fig col-hide-sm" id="footCashOutDollars">$0.00</td>
+                  <td class="col-num fig" id="footDiffDollars">$0.00</td>
+                  <td class="tfoot-spacer"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div class="ledger-footer">
+            <div class="ledger-footer-left">
+              <button type="button" class="btn btn--card" id="addPlayerBtn">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+                Add player
+              </button>
+              <span class="save-status" id="saveStatus" role="status" aria-live="polite">Saved in browser</span>
+            </div>
+
+            <button type="submit" class="btn btn--primary" id="calculateBtn">Calculate settlement</button>
+          </div>
+
+          <p class="form-feedback" id="formFeedback" role="alert" aria-live="assertive"></p>
+        </form>
+
+        <div class="undo-bar" id="undoBar" role="status" aria-live="polite" hidden>
+          <span id="undoMessage">Action completed.</span>
+          <button type="button" class="btn btn--card" id="undoBtn">Undo</button>
+        </div>
+      </section>
+
+      <aside class="results-column" id="resultsColumn" aria-labelledby="resultsHeading">
+        <div class="sheet empty-results" id="emptyResults">
+          <div class="sheet-header">
+            <h2 class="sheet-title" id="resultsHeading">Settlement summary</h2>
+          </div>
+          <p class="empty-results-copy">
+            Enter each player’s buy-in count and ending cash-out chips, then select Calculate settlement. Any chip discrepancy and sub-dollar balance is adjusted transparently.
+          </p>
+          <dl class="rules-dl">
+            <dt>Buy-in rate</dt>
+            <dd id="emptyRateText">1 buy-in equals 100 chips (<span class="fig">$20.00</span>), so each chip is <span class="fig">$0.20</span>.</dd>
+            <dt>Exact cash-outs</dt>
+            <dd>Initial cash-outs and table differences are calculated to the penny, with missing or extra money distributed proportionally among winners without forcing any winner to pay.</dd>
+            <dt>Payout rounding</dt>
+            <dd>Final transactions are calculated to the penny first, then each payout always rounds down toward <span class="fig">$0.00</span> (never up to the higher dollar). Any payout under <span class="fig">$1.00</span> rounds down to <span class="fig">$0.00</span> and is removed and noted.</dd>
+          </dl>
+        </div>
+
+        <div id="computedResults" hidden>
+          <section class="board" aria-labelledby="summaryBoardHeading">
+            <div class="board-top">
+              <div>
+                <h2 class="board-title" id="summaryBoardHeading">Game summary</h2>
+                <p class="board-meta" id="summaryMeta"></p>
+              </div>
+              <span class="stamp" id="settledStamp">Settled</span>
+            </div>
+
+            <div class="summary-stats">
+              <div class="stat">
+                <span class="stat-label">Buy-in total</span>
+                <span class="stat-value" id="resBuyInTotal">$0.00</span>
+                <span class="stat-detail" id="resBuyInDetail">0 buy-ins</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label">Cash-out total</span>
+                <span class="stat-value" id="resCashOutTotal">$0.00</span>
+                <span class="stat-detail" id="resCashOutDetail">0 chips</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label">Cash-out difference</span>
+                <span class="stat-value" id="resDiffTotal">$0.00</span>
+                <span class="stat-detail" id="resDiffDetail">Exact match</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="sheet" aria-labelledby="txHeading">
+            <div class="tx-header">
+              <h2 class="sheet-title" id="txHeading">Final transactions</h2>
+              <button type="button" class="btn btn--card" id="copySummaryBtn">Copy summary</button>
+            </div>
+
+            <div id="txTableWrap">
+              <table class="tx-table" aria-label="Final settlement transactions">
+                <thead>
+                  <tr>
+                    <th scope="col">Payer</th>
+                    <th scope="col" class="col-pays">Pays</th>
+                    <th scope="col">Receiver</th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="txBody"></tbody>
+              </table>
+            </div>
+
+            <p class="tx-empty" id="txEmpty" hidden>No transfers are needed for this game.</p>
+            <div class="tx-rounding-note" id="txRoundingNote" hidden></div>
+
+            <details class="breakdown-details" id="breakdownDetails">
+              <summary>
+                <svg class="breakdown-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M9 6l6 6-6 6"/>
+                </svg>
+                Player-by-player ledger breakdown
+              </summary>
+              <div class="breakdown-wrap">
+                <table class="breakdown-table" aria-label="Player adjustment breakdown">
+                  <thead>
+                    <tr>
+                      <th scope="col">Player</th>
+                      <th scope="col" class="col-num">Raw net</th>
+                      <th scope="col" class="col-num">Adjustment</th>
+                      <th scope="col" class="col-num">Final net</th>
+                    </tr>
+                  </thead>
+                  <tbody id="breakdownBody"></tbody>
+                </table>
+              </div>
+            </details>
+
+            <div class="explain-section" aria-labelledby="explainHeading">
+              <h3 class="explain-title" id="explainHeading">How the final adjustment was done</h3>
+              <ol class="explain-list" id="explainList"></ol>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="app-footer">
+      <p>This code is released under the public domain. All calculations run locally and your data never leaves your browser.</p>
+    </footer>
+  </div>
+
+  <dialog class="help-dialog" id="helpDialog" aria-labelledby="helpDialogTitle">
+    <div class="help-dialog-inner">
+      <div class="help-header">
+        <h2 class="sheet-title" id="helpDialogTitle">Settle Up guide</h2>
+        <button type="button" class="btn btn--icon" id="closeHelpBtn" aria-label="Close help">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="help-body">
+        <div class="help-sample-bar">
+          <p class="help-sample-copy">Want to see how it works? Load a sample 8-player game with buy-ins from 1 to 6.</p>
+          <button type="button" class="btn btn--primary" id="loadSampleBtn">Load sample</button>
+        </div>
+
+        <section class="help-block">
+          <h3>Quick start</h3>
+          <ol>
+            <li>Confirm today’s date (selected automatically) and enter the place where you played.</li>
+            <li>Enter each player’s name, whole-number buy-in count (1 to 50), and ending cash-out chip count (0 to 5000).</li>
+            <li>Use Add player or the row delete button to adjust the roster, then select Calculate settlement.</li>
+          </ol>
+        </section>
+
+        <section class="help-block">
+          <h3>Chip values and limits</h3>
+          <ul>
+            <li>Each buy-in represents <span class="fig">100</span> chips and defaults to <span class="fig">$20.00</span> (editable in the Game ledger header from <span class="fig">$1</span> to <span class="fig">$1,000</span>).</li>
+            <li>Each chip equals the buy-in value divided by <span class="fig">100</span> (at <span class="fig">$20.00</span>, each chip is <span class="fig">$0.20</span>).</li>
+            <li>Buy-in count accepts whole numbers from <span class="fig">1</span> through <span class="fig">50</span>.</li>
+            <li>Cash-out count accepts whole chip counts from <span class="fig">0</span> through <span class="fig">5000</span> (<span class="fig">$0.00</span> to <span class="fig">$1,000.00</span>).</li>
+          </ul>
+        </section>
+
+        <section class="help-block">
+          <h3>Settlement and adjustment algorithm</h3>
+          <ol>
+            <li><strong>Exact initial cash-outs:</strong> Each player’s chip value (Cash-out chips × chip rate) is kept exact to the penny with no initial rounding down. Raw net equals exact Out $ minus Buy-in $.</li>
+            <li><strong>Proportional distribution among winners (to the penny):</strong> To bring the table to exact zero balance, any cash-out difference is distributed across all winners proportionally to each winner’s share of total winnings down to the exact cent using largest-remainder allocation:
+              <ul>
+                <li><em>Missing chips (Cash-out total lower than Buy-in total):</em> Extra cash remains in the pot, so it is added proportionally to all winners.</li>
+                <li><em>Overcounted chips (Cash-out total higher than Buy-in total):</em> More winnings were claimed than money in the pot, so the shortfall is deducted proportionally from all winners. Because each deduction is proportional to winnings, no winner is ever forced below <span class="fig">$0.00</span>.</li>
+                <li><em>No winners:</em> If no player finished ahead, the adjustment is shared equally across all participants to the penny so every player’s relative margin is preserved.</li>
+              </ul>
+            </li>
+            <li><strong>Exact penny-level transactions:</strong> Exact payer-to-receiver matches settle first, then remaining balances match largest-to-largest down to the penny.</li>
+            <li><strong>Round down payouts &amp; remove under $1.00:</strong> After final transactions are calculated to the penny, each payout always rounds down toward <span class="fig">$0.00</span> to the lower whole dollar — never up to the higher dollar (e.g., <span class="fig">$27.59</span> becomes <span class="fig">$27.00</span>). Any payout under <span class="fig">$1.00</span> rounds down to <span class="fig">$0.00</span>, is removed, and all rounding down is clearly noted.</li>
+          </ol>
+        </section>
+
+        <section class="help-block">
+          <h3>Worked example</h3>
+          <div class="help-example">
+            <p>Four players record <span class="fig">$100.00</span> in total buy-ins (<span class="fig">500</span> chips), and count <span class="fig">545</span> chips (<span class="fig">$109.00</span>) at cash-out, leaving a <span class="fig">+$9.00</span> cash-out difference (total buy-ins less than total cash-outs).</p>
+            <p>Alice (<span class="fig">+$33.80</span>), Devon (<span class="fig">+$14.20</span>), and Priya (<span class="fig">+$1.00</span>) are winners; Sam (<span class="fig">-$40.00</span>) is the loser. The <span class="fig">$9.00</span> overage is deducted proportionally from winners to the penny: Alice adjusts by <span class="fig">-$6.21</span> (<span class="fig">+$27.59</span> final), Devon by <span class="fig">-$2.61</span> (<span class="fig">+$11.59</span> final), and Priya by <span class="fig">-$0.18</span> (<span class="fig">+$0.82</span> final).</p>
+            <p>Exact transfers are Sam to Alice <span class="fig">$27.59</span>, Sam to Devon <span class="fig">$11.59</span>, and Sam to Priya <span class="fig">$0.82</span>. Always rounding payouts down toward <span class="fig">$0.00</span> (never up) gives Sam pays Alice <span class="fig">$27.00</span> and Sam pays Devon <span class="fig">$11.00</span>, while Sam to Priya (<span class="fig">$0.82</span>) rounds down to <span class="fig">$0.00</span> and is removed.</p>
+          </div>
+        </section>
+
+        <section class="help-block">
+          <h3>Browser storage and privacy</h3>
+          <p>Settle Up runs entirely in your browser with no account and no server requests. Your date, place, players, and paid checkmarks save automatically to browser storage so they are ready the next time you open the page.</p>
+        </section>
+      </div>
+
+      <div class="help-footer">
+        <button type="button" class="btn btn--primary" id="closeHelpFooterBtn">Done</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const CHIPS_PER_BUYIN = 100;
+      const DEFAULT_BUYIN_DOLLARS = 20;
+      const MIN_BUYIN_DOLLARS = 1;
+      const MAX_BUYIN_DOLLARS = 1000;
+      const MIN_BUYIN = 1;
+      const MAX_BUYIN = 50;
+      const MIN_CASHOUT = 0;
+      const MAX_CASHOUT = 5000;
+      const SUB_DOLLAR_CENTS = 100;
+      const STORAGE_KEY = "settleup.ledger.v1";
+      const THEME_STORAGE_KEY = "settleup.theme.v1";
+
+      const dom = {
+        form: document.getElementById("ledgerForm"),
+        buyInDollarInput: document.getElementById("buyInDollarInput"),
+        emptyRateText: document.getElementById("emptyRateText"),
+        gameDate: document.getElementById("gameDate"),
+        gamePlace: document.getElementById("gamePlace"),
+        playerRows: document.getElementById("playerRows"),
+        ledgerTable: document.getElementById("ledgerTable"),
+        emptyRoster: document.getElementById("emptyRoster"),
+        emptyAddPlayerBtn: document.getElementById("emptyAddPlayerBtn"),
+        addPlayerBtn: document.getElementById("addPlayerBtn"),
+        calculateBtn: document.getElementById("calculateBtn"),
+        loadSampleBtn: document.getElementById("loadSampleBtn"),
+        newGameBtn: document.getElementById("newGameBtn"),
+        themeToggleBtn: document.getElementById("themeToggleBtn"),
+        themeToggleLabel: document.getElementById("themeToggleLabel"),
+        themeIconMoon: document.getElementById("themeIconMoon"),
+        themeIconSun: document.getElementById("themeIconSun"),
+        openHelpBtn: document.getElementById("openHelpBtn"),
+        helpDialog: document.getElementById("helpDialog"),
+        closeHelpBtn: document.getElementById("closeHelpBtn"),
+        closeHelpFooterBtn: document.getElementById("closeHelpFooterBtn"),
+        saveStatus: document.getElementById("saveStatus"),
+        formFeedback: document.getElementById("formFeedback"),
+        undoBar: document.getElementById("undoBar"),
+        undoMessage: document.getElementById("undoMessage"),
+        undoBtn: document.getElementById("undoBtn"),
+        footPlayers: document.getElementById("footPlayers"),
+        footBuyInCount: document.getElementById("footBuyInCount"),
+        footCashOutChips: document.getElementById("footCashOutChips"),
+        footBuyInDollars: document.getElementById("footBuyInDollars"),
+        footCashOutDollars: document.getElementById("footCashOutDollars"),
+        footDiffDollars: document.getElementById("footDiffDollars"),
+        resultsColumn: document.getElementById("resultsColumn"),
+        emptyResults: document.getElementById("emptyResults"),
+        computedResults: document.getElementById("computedResults"),
+        summaryMeta: document.getElementById("summaryMeta"),
+        settledStamp: document.getElementById("settledStamp"),
+        resBuyInTotal: document.getElementById("resBuyInTotal"),
+        resBuyInDetail: document.getElementById("resBuyInDetail"),
+        resCashOutTotal: document.getElementById("resCashOutTotal"),
+        resCashOutDetail: document.getElementById("resCashOutDetail"),
+        resDiffTotal: document.getElementById("resDiffTotal"),
+        resDiffDetail: document.getElementById("resDiffDetail"),
+        txTableWrap: document.getElementById("txTableWrap"),
+        txBody: document.getElementById("txBody"),
+        txEmpty: document.getElementById("txEmpty"),
+        txRoundingNote: document.getElementById("txRoundingNote"),
+        copySummaryBtn: document.getElementById("copySummaryBtn"),
+        explainList: document.getElementById("explainList"),
+        breakdownBody: document.getElementById("breakdownBody")
+      };
+
+      let nextRowId = 1;
+      let undoSnapshot = null;
+      let undoTimer = null;
+
+      let state = {
+        date: getTodayISO(),
+        place: "",
+        buyInDollars: String(DEFAULT_BUYIN_DOLLARS),
+        rows: [],
+        lastResult: null,
+        paidMap: {},
+        isStale: false
+      };
+
+      function parseBuyInCents(value) {
+        const trimmed = String(value ?? "").trim();
+        if (trimmed === "") return { valid: false, cents: DEFAULT_BUYIN_DOLLARS * 100 };
+        const num = Number(trimmed);
+        if (!Number.isFinite(num) || num < MIN_BUYIN_DOLLARS || num > MAX_BUYIN_DOLLARS) {
+          return { valid: false, cents: DEFAULT_BUYIN_DOLLARS * 100 };
+        }
+        return { valid: true, cents: Math.round(num * 100) };
+      }
+
+      function getCurrentBuyInCents() {
+        return parseBuyInCents(state.buyInDollars).cents;
+      }
+
+      function updateRateDisplays() {
+        const centsPerBuyIn = getCurrentBuyInCents();
+        const chipDollars = (centsPerBuyIn / 100 / CHIPS_PER_BUYIN).toLocaleString("en-US", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 4
+        });
+        if (dom.emptyRateText) {
+          dom.emptyRateText.innerHTML = `1 buy-in equals ${CHIPS_PER_BUYIN} chips (<span class="fig">${formatCents(centsPerBuyIn)}</span>), so each chip is <span class="fig">$${chipDollars}</span>.`;
+        }
+      }
+
+      function getTodayISO() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, "0");
+        const day = String(now.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      }
+
+      function createRow(name = "", buyIn = "1", cashOut = "") {
+        return {
+          id: `r${nextRowId++}`,
+          name: String(name),
+          buyIn: String(buyIn),
+          cashOut: String(cashOut)
+        };
+      }
+
+      function roundDownPayoutToWholeDollar(cents) {
+        if (cents < SUB_DOLLAR_CENTS) return 0;
+        return Math.floor(cents / 100) * 100;
+      }
+
+      function formatCents(cents) {
+        const abs = Math.abs(cents);
+        const formatted = (abs / 100).toLocaleString("en-US", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        });
+        return cents < 0 ? `-$${formatted}` : `$${formatted}`;
+      }
+
+      function formatSignedCents(cents) {
+        if (cents > 0) return `+${formatCents(cents)}`;
+        if (cents < 0) return formatCents(cents);
+        return "$0.00";
+      }
+
+      function formatDisplayDate(isoDate) {
+        if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return "No date set";
+        const [y, m, d] = isoDate.split("-").map(Number);
+        const dt = new Date(y, m - 1, d);
+        return dt.toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          year: "numeric"
+        });
+      }
+
+      function parseWholeNumber(value) {
+        const trimmed = String(value).trim();
+        if (trimmed === "") return { empty: true, valid: false, num: null };
+        if (!/^\d+$/.test(trimmed)) return { empty: false, valid: false, num: null };
+        const num = Number(trimmed);
+        if (!Number.isSafeInteger(num)) return { empty: false, valid: false, num: null };
+        return { empty: false, valid: true, num };
+      }
+
+      function saveToStorage() {
+        const payload = JSON.stringify({
+          date: state.date,
+          place: state.place,
+          buyInDollars: state.buyInDollars,
+          rows: state.rows.map(({ name, buyIn, cashOut }) => ({ name, buyIn, cashOut })),
+          lastResult: state.lastResult,
+          paidMap: state.paidMap,
+          isStale: state.isStale
+        });
+
+        let saved = false;
+        try {
+          window.localStorage.setItem(STORAGE_KEY, payload);
+          saved = true;
+        } catch (_err) {
+          // Ignore quota or privacy-mode errors
+        }
+        try {
+          window.sessionStorage.setItem(STORAGE_KEY, payload);
+          saved = true;
+        } catch (_err) {
+          // Ignore storage errors
+        }
+
+        dom.saveStatus.textContent = saved ? "Saved in browser" : "Browser storage unavailable";
+      }
+
+      function loadFromStorage() {
+        let raw = null;
+        try {
+          raw = window.localStorage.getItem(STORAGE_KEY);
+        } catch (_err) {
+          raw = null;
+        }
+        if (!raw) {
+          try {
+            raw = window.sessionStorage.getItem(STORAGE_KEY);
+          } catch (_err) {
+            raw = null;
+          }
+        }
+        if (!raw) return false;
+
+        try {
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== "object") return false;
+          state.date = typeof parsed.date === "string" && parsed.date ? parsed.date : getTodayISO();
+          state.place = typeof parsed.place === "string" ? parsed.place : "";
+          state.buyInDollars = parsed.buyInDollars !== undefined && String(parsed.buyInDollars).trim() !== ""
+            ? String(parsed.buyInDollars)
+            : String(DEFAULT_BUYIN_DOLLARS);
+          state.rows = Array.isArray(parsed.rows)
+            ? parsed.rows.map((r) => createRow(r.name ?? "", r.buyIn ?? "", r.cashOut ?? ""))
+            : [];
+          state.lastResult = parsed.lastResult && typeof parsed.lastResult === "object" ? parsed.lastResult : null;
+          state.paidMap = parsed.paidMap && typeof parsed.paidMap === "object" ? parsed.paidMap : {};
+          state.isStale = Boolean(parsed.isStale);
+          return true;
+        } catch (_err) {
+          return false;
+        }
+      }
+
+      function markStaleIfCalculated() {
+        if (state.lastResult && !state.isStale) {
+          state.isStale = true;
+          updateStaleIndicator();
+        }
+      }
+
+      function updateStaleIndicator() {
+        if (!state.lastResult) return;
+        if (state.isStale) {
+          dom.settledStamp.textContent = "Recalculate needed";
+          dom.settledStamp.classList.add("stamp--stale");
+        } else {
+          dom.settledStamp.textContent = "Settled";
+          dom.settledStamp.classList.remove("stamp--stale");
+        }
+      }
+
+      function showUndo(message, snapshot) {
+        undoSnapshot = snapshot;
+        dom.undoMessage.textContent = message;
+        dom.undoBar.hidden = false;
+        if (undoTimer) window.clearTimeout(undoTimer);
+        undoTimer = window.setTimeout(() => {
+          hideUndo();
+        }, 9000);
+      }
+
+      function hideUndo() {
+        undoSnapshot = null;
+        dom.undoBar.hidden = true;
+        if (undoTimer) {
+          window.clearTimeout(undoTimer);
+          undoTimer = null;
+        }
+      }
+
+      function captureSnapshot() {
+        return {
+          date: state.date,
+          place: state.place,
+          buyInDollars: state.buyInDollars,
+          rows: state.rows.map((r) => ({ ...r })),
+          lastResult: state.lastResult ? JSON.parse(JSON.stringify(state.lastResult)) : null,
+          paidMap: { ...state.paidMap },
+          isStale: state.isStale
+        };
+      }
+
+      function isRowBlank(row) {
+        return row.name.trim() === "" && row.cashOut.trim() === "" && (row.buyIn.trim() === "" || row.buyIn.trim() === "1");
+      }
+
+      function computeRowPreview(row) {
+        const centsPerBuyIn = getCurrentBuyInCents();
+        const b = parseWholeNumber(row.buyIn);
+        const c = parseWholeNumber(row.cashOut);
+        const hasBuyIn = b.valid && b.num >= MIN_BUYIN && b.num <= MAX_BUYIN;
+        const hasCashOut = c.valid && c.num >= MIN_CASHOUT && c.num <= MAX_CASHOUT;
+        const buyInCents = hasBuyIn ? b.num * centsPerBuyIn : null;
+        const cashOutCents = hasCashOut ? Math.floor((c.num * centsPerBuyIn) / CHIPS_PER_BUYIN) : null;
+        const netCents = buyInCents !== null && cashOutCents !== null ? cashOutCents - buyInCents : null;
+        return { hasBuyIn, hasCashOut, buyInNum: b.num, cashOutNum: c.num, buyInCents, cashOutCents, netCents };
+      }
+
+      function updateRowPreviewCells(tr, row) {
+        const preview = computeRowPreview(row);
+        const buyInCell = tr.querySelector('[data-cell="buyInDollars"]');
+        const cashOutCell = tr.querySelector('[data-cell="cashOutDollars"]');
+        const netCell = tr.querySelector('[data-cell="rawNet"]');
+
+        buyInCell.textContent = preview.buyInCents !== null ? formatCents(preview.buyInCents) : "$0.00";
+
+        cashOutCell.textContent = preview.cashOutCents !== null ? formatCents(preview.cashOutCents) : "$0.00";
+
+        netCell.classList.remove("val-pos", "val-neg", "val-zero");
+        if (preview.netCents === null) {
+          netCell.textContent = "$0.00";
+          netCell.classList.add("val-zero");
+        } else {
+          netCell.textContent = formatSignedCents(preview.netCents);
+          if (preview.netCents > 0) netCell.classList.add("val-pos");
+          else if (preview.netCents < 0) netCell.classList.add("val-neg");
+          else netCell.classList.add("val-zero");
+        }
+      }
+
+      function updateLiveFooter() {
+        let activePlayers = 0;
+        let totalBuyInCount = 0;
+        let totalCashOutChips = 0;
+        let totalBuyInCents = 0;
+        let totalCashOutCents = 0;
+
+        for (const row of state.rows) {
+          const hasAnyInput = row.name.trim() !== "" || row.cashOut.trim() !== "";
+          const preview = computeRowPreview(row);
+          if (hasAnyInput) activePlayers += 1;
+          if (hasAnyInput && preview.hasBuyIn) {
+            totalBuyInCount += preview.buyInNum;
+            totalBuyInCents += preview.buyInCents;
+          }
+          if (hasAnyInput && preview.hasCashOut) {
+            totalCashOutChips += preview.cashOutNum;
+            totalCashOutCents += preview.cashOutCents;
+          }
+        }
+
+        const diffCents = totalCashOutCents - totalBuyInCents;
+        dom.footPlayers.textContent = `${activePlayers} ${activePlayers === 1 ? "player" : "players"}`;
+        dom.footBuyInCount.textContent = String(totalBuyInCount);
+        dom.footCashOutChips.textContent = totalCashOutChips.toLocaleString("en-US");
+        dom.footBuyInDollars.textContent = formatCents(totalBuyInCents);
+        dom.footCashOutDollars.textContent = formatCents(totalCashOutCents);
+        dom.footDiffDollars.textContent = formatSignedCents(diffCents);
+        dom.footDiffDollars.classList.remove("val-pos", "val-neg", "val-warn", "val-zero");
+        if (diffCents === 0) dom.footDiffDollars.classList.add("val-pos");
+        else if (diffCents < 0) dom.footDiffDollars.classList.add("val-warn");
+        else dom.footDiffDollars.classList.add("val-neg");
+      }
+
+      function renderRows() {
+        dom.playerRows.textContent = "";
+        const isEmpty = state.rows.length === 0;
+        dom.emptyRoster.hidden = !isEmpty;
+        dom.ledgerTable.hidden = isEmpty;
+
+        state.rows.forEach((row, index) => {
+          const tr = document.createElement("tr");
+          tr.dataset.rowId = row.id;
+
+          const nameTd = document.createElement("td");
+          nameTd.dataset.cell = "name";
+          nameTd.dataset.label = "Player name";
+          nameTd.className = "col-name";
+          const nameWrap = document.createElement("div");
+          nameWrap.className = "cell-main";
+          const nameInput = document.createElement("input");
+          nameInput.type = "text";
+          nameInput.className = "input";
+          nameInput.name = `playerName_${row.id}`;
+          nameInput.value = row.name;
+          nameInput.placeholder = `Player ${index + 1}`;
+          nameInput.maxLength = 40;
+          nameInput.autocomplete = "off";
+          nameInput.setAttribute("aria-label", `Player ${index + 1} name`);
+          const nameErr = document.createElement("div");
+          nameErr.className = "cell-error";
+          nameErr.id = `err_name_${row.id}`;
+          nameWrap.append(nameInput, nameErr);
+          nameTd.appendChild(nameWrap);
+
+          const buyInTd = document.createElement("td");
+          buyInTd.dataset.cell = "buyIn";
+          buyInTd.dataset.label = "Buy-ins (1 to 50)";
+          buyInTd.className = "col-num col-buyin";
+          const buyInInput = document.createElement("input");
+          buyInInput.type = "number";
+          buyInInput.inputMode = "numeric";
+          buyInInput.className = "input input--num";
+          buyInInput.name = `buyIn_${row.id}`;
+          buyInInput.min = String(MIN_BUYIN);
+          buyInInput.max = String(MAX_BUYIN);
+          buyInInput.step = "1";
+          buyInInput.value = row.buyIn;
+          buyInInput.placeholder = "1";
+          buyInInput.setAttribute("aria-label", `Player ${index + 1} buy-in count`);
+          const buyInErr = document.createElement("div");
+          buyInErr.className = "cell-error";
+          buyInErr.id = `err_buyIn_${row.id}`;
+          buyInTd.append(buyInInput, buyInErr);
+
+          const cashOutTd = document.createElement("td");
+          cashOutTd.dataset.cell = "cashOut";
+          cashOutTd.dataset.label = "Cash-out chips (0 to 5000)";
+          cashOutTd.className = "col-num col-cashout";
+          const cashOutInput = document.createElement("input");
+          cashOutInput.type = "number";
+          cashOutInput.inputMode = "numeric";
+          cashOutInput.className = "input input--num";
+          cashOutInput.name = `cashOut_${row.id}`;
+          cashOutInput.min = String(MIN_CASHOUT);
+          cashOutInput.max = String(MAX_CASHOUT);
+          cashOutInput.step = "1";
+          cashOutInput.value = row.cashOut;
+          cashOutInput.placeholder = "0";
+          cashOutInput.setAttribute("aria-label", `Player ${index + 1} cash-out chip count`);
+          const cashOutErr = document.createElement("div");
+          cashOutErr.className = "cell-error";
+          cashOutErr.id = `err_cashOut_${row.id}`;
+          cashOutTd.append(cashOutInput, cashOutErr);
+
+          const buyInValTd = document.createElement("td");
+          buyInValTd.className = "col-num col-calc col-hide-sm fig";
+          buyInValTd.dataset.cell = "buyInDollars";
+          buyInValTd.dataset.label = "Buy-in value";
+
+          const cashOutValTd = document.createElement("td");
+          cashOutValTd.className = "col-num col-calc col-hide-sm fig";
+          cashOutValTd.dataset.cell = "cashOutDollars";
+          cashOutValTd.dataset.label = "Cash-out value";
+
+          const netValTd = document.createElement("td");
+          netValTd.className = "col-num col-calc col-net fig";
+          netValTd.dataset.cell = "rawNet";
+          netValTd.dataset.label = "Raw net";
+
+          const removeTd = document.createElement("td");
+          removeTd.dataset.cell = "remove";
+          const removeBtn = document.createElement("button");
+          removeBtn.type = "button";
+          removeBtn.className = "btn btn--icon";
+          removeBtn.setAttribute("aria-label", `Remove ${row.name.trim() || `Player ${index + 1}`}`);
+          removeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+          removeTd.appendChild(removeBtn);
+
+          nameInput.addEventListener("input", () => {
+            row.name = nameInput.value;
+            removeBtn.setAttribute("aria-label", `Remove ${row.name.trim() || `Player ${index + 1}`}`);
+            clearFieldError(nameInput, nameErr);
+            dom.formFeedback.textContent = "";
+            markStaleIfCalculated();
+            updateLiveFooter();
+            saveToStorage();
+          });
+
+          buyInInput.addEventListener("input", () => {
+            row.buyIn = buyInInput.value;
+            clearFieldError(buyInInput, buyInErr);
+            dom.formFeedback.textContent = "";
+            markStaleIfCalculated();
+            updateRowPreviewCells(tr, row);
+            updateLiveFooter();
+            saveToStorage();
+          });
+
+          buyInInput.addEventListener("blur", () => {
+            if (row.name.trim() !== "" || row.cashOut.trim() !== "") {
+              validateBuyInField(row, buyInInput, buyInErr);
+            }
+          });
+
+          cashOutInput.addEventListener("input", () => {
+            row.cashOut = cashOutInput.value;
+            clearFieldError(cashOutInput, cashOutErr);
+            dom.formFeedback.textContent = "";
+            markStaleIfCalculated();
+            updateRowPreviewCells(tr, row);
+            updateLiveFooter();
+            saveToStorage();
+          });
+
+          cashOutInput.addEventListener("blur", () => {
+            if (row.name.trim() !== "" || row.cashOut.trim() !== "") {
+              validateCashOutField(row, cashOutInput, cashOutErr);
+            }
+          });
+
+          removeBtn.addEventListener("click", () => {
+            const snapshot = captureSnapshot();
+            const label = row.name.trim() || `Player ${index + 1}`;
+            const hadContent = !isRowBlank(row);
+            state.rows = state.rows.filter((r) => r.id !== row.id);
+            markStaleIfCalculated();
+            renderRows();
+            updateLiveFooter();
+            saveToStorage();
+            if (hadContent) {
+              showUndo(`Removed ${label} from the ledger.`, snapshot);
+            }
+          });
+
+          tr.append(nameTd, buyInTd, cashOutTd, buyInValTd, cashOutValTd, netValTd, removeTd);
+          updateRowPreviewCells(tr, row);
+          dom.playerRows.appendChild(tr);
+        });
+
+        updateLiveFooter();
+      }
+
+      function setFieldError(input, errEl, message) {
+        input.setAttribute("aria-invalid", "true");
+        input.setAttribute("aria-describedby", errEl.id);
+        errEl.textContent = message;
+      }
+
+      function clearFieldError(input, errEl) {
+        input.removeAttribute("aria-invalid");
+        input.removeAttribute("aria-describedby");
+        errEl.textContent = "";
+      }
+
+      function validateBuyInField(row, input, errEl) {
+        const parsed = parseWholeNumber(row.buyIn);
+        if (parsed.empty) {
+          setFieldError(input, errEl, "Enter 1 to 50.");
+          return false;
+        }
+        if (!parsed.valid || parsed.num < MIN_BUYIN || parsed.num > MAX_BUYIN) {
+          setFieldError(input, errEl, "Whole number 1 to 50.");
+          return false;
+        }
+        clearFieldError(input, errEl);
+        return true;
+      }
+
+      function validateCashOutField(row, input, errEl) {
+        const parsed = parseWholeNumber(row.cashOut);
+        if (parsed.empty) {
+          setFieldError(input, errEl, "Enter 0 to 5000.");
+          return false;
+        }
+        if (!parsed.valid || parsed.num < MIN_CASHOUT || parsed.num > MAX_CASHOUT) {
+          setFieldError(input, errEl, "Whole chips 0 to 5000.");
+          return false;
+        }
+        clearFieldError(input, errEl);
+        return true;
+      }
+
+      function validateAllRows() {
+        dom.formFeedback.textContent = "";
+        let firstInvalid = null;
+        const activePlayers = [];
+        const seenNames = new Map();
+
+        state.rows.forEach((row) => {
+          const tr = dom.playerRows.querySelector(`tr[data-row-id="${row.id}"]`);
+          if (!tr) return;
+          const nameInput = tr.querySelector(`input[name="playerName_${row.id}"]`);
+          const buyInInput = tr.querySelector(`input[name="buyIn_${row.id}"]`);
+          const cashOutInput = tr.querySelector(`input[name="cashOut_${row.id}"]`);
+          const nameErr = document.getElementById(`err_name_${row.id}`);
+          const buyInErr = document.getElementById(`err_buyIn_${row.id}`);
+          const cashOutErr = document.getElementById(`err_cashOut_${row.id}`);
+
+          clearFieldError(nameInput, nameErr);
+          clearFieldError(buyInInput, buyInErr);
+          clearFieldError(cashOutInput, cashOutErr);
+
+          if (isRowBlank(row)) return;
+
+          const trimmedName = row.name.trim();
+          let rowValid = true;
+
+          if (trimmedName === "") {
+            setFieldError(nameInput, nameErr, "Enter player name.");
+            if (!firstInvalid) firstInvalid = nameInput;
+            rowValid = false;
+          } else {
+            const key = trimmedName.toLowerCase();
+            if (seenNames.has(key)) {
+              setFieldError(nameInput, nameErr, "Duplicate name.");
+              if (!firstInvalid) firstInvalid = nameInput;
+              rowValid = false;
+            } else {
+              seenNames.set(key, true);
+            }
+          }
+
+          if (!validateBuyInField(row, buyInInput, buyInErr)) {
+            if (!firstInvalid) firstInvalid = buyInInput;
+            rowValid = false;
+          }
+
+          if (!validateCashOutField(row, cashOutInput, cashOutErr)) {
+            if (!firstInvalid) firstInvalid = cashOutInput;
+            rowValid = false;
+          }
+
+          if (rowValid) {
+            activePlayers.push({
+              name: trimmedName,
+              buyInCount: Number(row.buyIn.trim()),
+              cashOutChips: Number(row.cashOut.trim())
+            });
+          }
+        });
+
+        if (firstInvalid) {
+          dom.formFeedback.textContent = "Fix the highlighted player fields before calculating.";
+          firstInvalid.focus();
+          return null;
+        }
+
+        if (activePlayers.length < 2) {
+          dom.formFeedback.textContent = "Enter at least two players with buy-ins and cash-out chips to calculate a settlement.";
+          const firstInput = dom.playerRows.querySelector("input");
+          if (firstInput) firstInput.focus();
+          return null;
+        }
+
+        return activePlayers;
+      }
+
+      function distributeProportionally(winners, totalDeltaCents) {
+        const deltas = new Map(winners.map((w) => [w.name, 0]));
+        if (winners.length === 0 || totalDeltaCents === 0) {
+          return { deltas };
+        }
+
+        const totalWeight = winners.reduce((sum, w) => sum + w.netCents, 0);
+        if (totalWeight <= 0) {
+          return distributeEqually(winners, totalDeltaCents, { floorAtZero: totalDeltaCents < 0 });
+        }
+
+        const sign = totalDeltaCents > 0 ? 1 : -1;
+        const totalCents = Math.abs(totalDeltaCents);
+
+        const items = winners.map((w) => {
+          const numerator = totalCents * w.netCents;
+          const floorCents = Math.floor(numerator / totalWeight);
+          const remNumerator = numerator % totalWeight;
+          return {
+            name: w.name,
+            weight: w.netCents,
+            cents: floorCents,
+            remNumerator
+          };
+        });
+
+        const assigned = items.reduce((sum, item) => sum + item.cents, 0);
+        const leftover = totalCents - assigned;
+
+        const byRemainder = [...items].sort(
+          (a, b) => (b.remNumerator - a.remNumerator) || (b.weight - a.weight) || a.name.localeCompare(b.name)
+        );
+
+        for (let i = 0; i < leftover && i < byRemainder.length; i += 1) {
+          byRemainder[i].cents += 1;
+        }
+
+        for (const item of items) {
+          deltas.set(item.name, sign * item.cents);
+        }
+
+        return { deltas };
+      }
+
+      function distributeEqually(targets, totalDeltaCents, options = {}) {
+        const { floorAtZero = false } = options;
+        const deltas = new Map(targets.map((t) => [t.name, 0]));
+        if (targets.length === 0 || totalDeltaCents === 0) {
+          return { deltas, capped: [] };
+        }
+
+        const capped = [];
+
+        if (totalDeltaCents > 0) {
+          const ordered = [...targets].sort((a, b) => (b.netCents - a.netCents) || a.name.localeCompare(b.name));
+          const baseCents = Math.floor(totalDeltaCents / ordered.length);
+          const remCents = totalDeltaCents % ordered.length;
+          ordered.forEach((p, idx) => {
+            deltas.set(p.name, baseCents + (idx < remCents ? 1 : 0));
+          });
+          return { deltas, capped };
+        }
+
+        let remainingDeduct = -totalDeltaCents;
+        let active = [...targets];
+
+        while (remainingDeduct > 0 && active.length > 0) {
+          if (floorAtZero) {
+            const shareExact = remainingDeduct / active.length;
+            const toCap = active.filter((p) => (p.netCents + deltas.get(p.name)) <= shareExact);
+            if (toCap.length > 0) {
+              for (const p of toCap) {
+                const avail = p.netCents + deltas.get(p.name);
+                deltas.set(p.name, deltas.get(p.name) - avail);
+                remainingDeduct -= avail;
+                capped.push({ name: p.name, cappedAtCents: avail });
+              }
+              active = active.filter((p) => !toCap.includes(p));
+              continue;
+            }
+          }
+
+          const ordered = [...active].sort((a, b) => {
+            const netA = a.netCents + deltas.get(a.name);
+            const netB = b.netCents + deltas.get(b.name);
+            return (netB - netA) || a.name.localeCompare(b.name);
+          });
+          const baseCents = Math.floor(remainingDeduct / ordered.length);
+          const remCents = remainingDeduct % ordered.length;
+          ordered.forEach((p, idx) => {
+            const cut = baseCents + (idx < remCents ? 1 : 0);
+            deltas.set(p.name, deltas.get(p.name) - cut);
+          });
+          remainingDeduct = 0;
+        }
+
+        return { deltas, capped };
+      }
+
+      function computeMinimalTransactions(players) {
+        const payers = players
+          .filter((p) => p.finalNetCents < 0)
+          .map((p) => ({ name: p.name, amount: -p.finalNetCents }));
+        const receivers = players
+          .filter((p) => p.finalNetCents > 0)
+          .map((p) => ({ name: p.name, amount: p.finalNetCents }));
+
+        const exactTransactions = [];
+
+        // Pass 1: exact pair matches down to the penny minimize transfer count immediately.
+        payers.sort((a, b) => (b.amount - a.amount) || a.name.localeCompare(b.name));
+        receivers.sort((a, b) => (b.amount - a.amount) || a.name.localeCompare(b.name));
+
+        for (const payer of payers) {
+          if (payer.amount === 0) continue;
+          const exactIdx = receivers.findIndex((r) => r.amount === payer.amount);
+          if (exactIdx !== -1) {
+            const receiver = receivers[exactIdx];
+            exactTransactions.push({ payer: payer.name, exactAmountCents: payer.amount, receiver: receiver.name });
+            payer.amount = 0;
+            receiver.amount = 0;
+          }
+        }
+
+        // Pass 2: match remaining balances largest-to-largest down to the penny.
+        while (true) {
+          const openPayers = payers.filter((p) => p.amount > 0).sort((a, b) => (b.amount - a.amount) || a.name.localeCompare(b.name));
+          const openReceivers = receivers.filter((r) => r.amount > 0).sort((a, b) => (b.amount - a.amount) || a.name.localeCompare(b.name));
+          if (openPayers.length === 0 || openReceivers.length === 0) break;
+
+          const payer = openPayers[0];
+          const exactMatch = openReceivers.find((r) => r.amount === payer.amount);
+          const chosenReceiver = exactMatch || openReceivers[0];
+
+          const transfer = Math.min(payer.amount, chosenReceiver.amount);
+          exactTransactions.push({ payer: payer.name, exactAmountCents: transfer, receiver: chosenReceiver.name });
+          payer.amount -= transfer;
+          chosenReceiver.amount -= transfer;
+        }
+
+        exactTransactions.sort(
+          (a, b) => (b.exactAmountCents - a.exactAmountCents) || a.payer.localeCompare(b.payer) || a.receiver.localeCompare(b.receiver)
+        );
+
+        // Step after exact penny calculation: round down payouts to whole dollars and remove any payout < $1.00.
+        const transactions = [];
+        const roundedTransactions = [];
+        const removedTransactions = [];
+
+        for (const tx of exactTransactions) {
+          if (tx.exactAmountCents < SUB_DOLLAR_CENTS) {
+            removedTransactions.push({
+              payer: tx.payer,
+              receiver: tx.receiver,
+              exactAmountCents: tx.exactAmountCents
+            });
+          } else {
+            const amountCents = roundDownPayoutToWholeDollar(tx.exactAmountCents);
+            const roundedDownCents = tx.exactAmountCents - amountCents;
+            const entry = {
+              payer: tx.payer,
+              receiver: tx.receiver,
+              exactAmountCents: tx.exactAmountCents,
+              amountCents,
+              roundedDownCents
+            };
+            transactions.push(entry);
+            if (roundedDownCents > 0) {
+              roundedTransactions.push(entry);
+            }
+          }
+        }
+
+        transactions.sort(
+          (a, b) => (b.amountCents - a.amountCents) || (b.exactAmountCents - a.exactAmountCents) || a.payer.localeCompare(b.payer) || a.receiver.localeCompare(b.receiver)
+        );
+
+        return { exactTransactions, transactions, roundedTransactions, removedTransactions };
+      }
+
+      function calculateSettlement(activePlayers, meta) {
+        const centsPerBuyIn = Number.isFinite(meta.centsPerBuyIn) && meta.centsPerBuyIn > 0
+          ? meta.centsPerBuyIn
+          : DEFAULT_BUYIN_DOLLARS * 100;
+        let buyInTotalCount = 0;
+        let cashOutTotalChips = 0;
+        let buyInTotalCents = 0;
+        let cashOutTotalCents = 0;
+
+        const players = activePlayers.map((p) => {
+          const buyInCents = p.buyInCount * centsPerBuyIn;
+          const cashOutCents = Math.floor((p.cashOutChips * centsPerBuyIn) / CHIPS_PER_BUYIN);
+          const rawNetCents = cashOutCents - buyInCents;
+          buyInTotalCount += p.buyInCount;
+          cashOutTotalChips += p.cashOutChips;
+          buyInTotalCents += buyInCents;
+          cashOutTotalCents += cashOutCents;
+          return {
+            name: p.name,
+            buyInCount: p.buyInCount,
+            cashOutChips: p.cashOutChips,
+            buyInCents,
+            cashOutCents,
+            rawNetCents,
+            netCents: rawNetCents,
+            finalNetCents: rawNetCents
+          };
+        });
+
+        const diffCents = cashOutTotalCents - buyInTotalCents;
+        const steps = [];
+
+        if (diffCents === 0) {
+          steps.push(`Buy-in total (${formatCents(buyInTotalCents)}) and exact cash-out total (${formatCents(cashOutTotalCents)}) balanced with a $0.00 difference.`);
+        } else if (diffCents < 0) {
+          steps.push(`Exact cash-out total (${formatCents(cashOutTotalCents)}) was ${formatCents(-diffCents)} below buy-in total (${formatCents(buyInTotalCents)}), leaving ${formatCents(-diffCents)} of missing chip value in the pot.`);
+        } else {
+          steps.push(`Exact cash-out total (${formatCents(cashOutTotalCents)}) exceeded buy-in total (${formatCents(buyInTotalCents)}) by ${formatCents(diffCents)}, leaving ${formatCents(diffCents)} less in the pot than claimed.`);
+        }
+
+        // Balance any table difference down to the penny proportionally among all winners.
+        const imbalanceCents = players.reduce((sum, p) => sum + p.netCents, 0);
+        const totalAdjustmentNeeded = -imbalanceCents;
+
+        if (totalAdjustmentNeeded !== 0) {
+          const winners = players.filter((p) => p.netCents > 0);
+
+          if (winners.length > 0) {
+            const { deltas } = distributeProportionally(winners, totalAdjustmentNeeded);
+            const sortedWinners = [...winners].sort((a, b) => (b.netCents - a.netCents) || a.name.localeCompare(b.name));
+            const shareSummary = sortedWinners
+              .map((w) => `${w.name} (${formatSignedCents(deltas.get(w.name) || 0)})`)
+              .join(", ");
+
+            for (const p of winners) {
+              p.netCents += deltas.get(p.name) || 0;
+            }
+
+            const absAdj = Math.abs(totalAdjustmentNeeded);
+            const direction = totalAdjustmentNeeded > 0 ? "added to" : "deducted from";
+            steps.push(`The ${formatCents(absAdj)} difference was ${direction} ${winners.length} ${winners.length === 1 ? "winner" : "winners"} proportionally to winnings down to the penny: ${shareSummary}.`);
+          } else {
+            // No player finished above break-even; share the adjustment equally across all participants down to the penny.
+            const { deltas } = distributeEqually(players, totalAdjustmentNeeded, { floorAtZero: false });
+            for (const p of players) {
+              p.netCents += deltas.get(p.name) || 0;
+            }
+            const base = Math.floor(Math.abs(totalAdjustmentNeeded) / players.length);
+            const signedBase = totalAdjustmentNeeded > 0 ? base : -base;
+            steps.push(`No player finished ahead, so the ${formatCents(Math.abs(totalAdjustmentNeeded))} difference was shared equally across all ${players.length} participants (${formatSignedCents(signedBase)} base share each) down to the penny to preserve every player’s relative margin.`);
+          }
+        }
+
+        players.forEach((p) => {
+          p.finalNetCents = p.netCents;
+          p.adjustmentCents = p.finalNetCents - p.rawNetCents;
+        });
+
+        const {
+          exactTransactions,
+          transactions,
+          roundedTransactions,
+          removedTransactions
+        } = computeMinimalTransactions(players);
+
+        const totalExactCents = exactTransactions.reduce((sum, t) => sum + t.exactAmountCents, 0);
+        const totalTransferredCents = transactions.reduce((sum, t) => sum + t.amountCents, 0);
+        const totalRoundedDownCents = roundedTransactions.reduce((sum, t) => sum + t.roundedDownCents, 0);
+        const totalRemovedCents = removedTransactions.reduce((sum, t) => sum + t.exactAmountCents, 0);
+
+        if (exactTransactions.length === 0) {
+          steps.push("All participants settled at $0.00, so no transfers are needed.");
+        } else {
+          steps.push(`Calculated ${exactTransactions.length} exact ${exactTransactions.length === 1 ? "payout" : "payouts"} down to the penny totaling ${formatCents(totalExactCents)}.`);
+
+          if (roundedTransactions.length > 0) {
+            const roundedDetail = roundedTransactions
+              .map((t) => `${t.payer} to ${t.receiver} (${formatCents(t.exactAmountCents)} → ${formatCents(t.amountCents)})`)
+              .join(", ");
+            steps.push(`Rounded payouts down toward $0.00 to the lower whole dollar (${formatCents(totalRoundedDownCents)} dropped across ${roundedTransactions.length} ${roundedTransactions.length === 1 ? "payout" : "payouts"}): ${roundedDetail}.`);
+          }
+
+          if (removedTransactions.length > 0) {
+            const removedDetail = removedTransactions
+              .map((t) => `${t.payer} to ${t.receiver} (${formatCents(t.exactAmountCents)})`)
+              .join(", ");
+            steps.push(`Removed ${removedTransactions.length} ${removedTransactions.length === 1 ? "payout" : "payouts"} under $1.00 (rounded down to $0.00, ${formatCents(totalRemovedCents)} total): ${removedDetail}.`);
+          }
+
+          if (roundedTransactions.length === 0 && removedTransactions.length === 0) {
+            steps.push(`All ${transactions.length} ${transactions.length === 1 ? "payout was" : "payouts were"} already whole dollars of $1.00 or more, so no payout rounding down was needed.`);
+          } else if (transactions.length === 0) {
+            steps.push("After removing payouts under $1.00, no transfers remain.");
+          } else {
+            steps.push(`Final payouts after rounding down: ${transactions.length} ${transactions.length === 1 ? "transfer" : "transfers"} totaling ${formatCents(totalTransferredCents)}.`);
+          }
+        }
+
+        return {
+          date: meta.date,
+          place: meta.place,
+          centsPerBuyIn,
+          buyInTotalCount,
+          cashOutTotalChips,
+          buyInTotalCents,
+          cashOutTotalCents,
+          diffCents,
+          players,
+          exactTransactions,
+          transactions,
+          roundedTransactions,
+          removedTransactions,
+          totalRoundedDownCents,
+          totalRemovedCents,
+          steps
+        };
+      }
+
+      function renderResults() {
+        const res = state.lastResult;
+        if (!res) {
+          dom.emptyResults.hidden = false;
+          dom.computedResults.hidden = true;
+          return;
+        }
+
+        dom.emptyResults.hidden = true;
+        dom.computedResults.hidden = false;
+
+        const metaParts = [formatDisplayDate(res.date)];
+        if (res.place.trim()) metaParts.push(res.place.trim());
+        dom.summaryMeta.textContent = metaParts.join(", ");
+        updateStaleIndicator();
+
+        dom.resBuyInTotal.textContent = formatCents(res.buyInTotalCents);
+        dom.resBuyInDetail.textContent = `${res.buyInTotalCount} ${res.buyInTotalCount === 1 ? "buy-in" : "buy-ins"} (${(res.buyInTotalCount * CHIPS_PER_BUYIN).toLocaleString("en-US")} chips)`;
+
+        dom.resCashOutTotal.textContent = formatCents(res.cashOutTotalCents);
+        dom.resCashOutDetail.textContent = `${res.cashOutTotalChips.toLocaleString("en-US")} chips`;
+
+        const chipDiff = res.cashOutTotalChips - (res.buyInTotalCount * CHIPS_PER_BUYIN);
+        dom.resDiffTotal.textContent = formatSignedCents(res.diffCents);
+        dom.resDiffTotal.classList.remove("stat-value--pos", "stat-value--warn", "stat-value--neg");
+        if (res.diffCents === 0) {
+          dom.resDiffTotal.classList.add("stat-value--pos");
+          dom.resDiffDetail.textContent = "Balanced table";
+        } else if (res.diffCents < 0) {
+          dom.resDiffTotal.classList.add("stat-value--warn");
+          dom.resDiffDetail.textContent = `${Math.abs(chipDiff)} chips missing`;
+        } else {
+          dom.resDiffTotal.classList.add("stat-value--neg");
+          dom.resDiffDetail.textContent = `${Math.abs(chipDiff)} chips over`;
+        }
+
+        const roundedList = Array.isArray(res.roundedTransactions) ? res.roundedTransactions : [];
+        const removedList = Array.isArray(res.removedTransactions) ? res.removedTransactions : [];
+
+        dom.txBody.textContent = "";
+        if (res.transactions.length === 0) {
+          dom.txTableWrap.hidden = true;
+          dom.txEmpty.hidden = false;
+          dom.txEmpty.textContent = removedList.length > 0
+            ? "No transfers remain after removing payouts under $1.00."
+            : "No transfers are needed for this game.";
+        } else {
+          dom.txTableWrap.hidden = false;
+          dom.txEmpty.hidden = true;
+          res.transactions.forEach((tx, idx) => {
+            const txKey = `${tx.payer}|${tx.receiver}|${tx.amountCents}|${idx}`;
+            const isPaid = Boolean(state.paidMap[txKey]);
+
+            const tr = document.createElement("tr");
+            if (isPaid) tr.classList.add("is-paid");
+
+            const payerTd = document.createElement("td");
+            payerTd.textContent = tx.payer;
+
+            const paysTd = document.createElement("td");
+            paysTd.className = "col-pays";
+            const amountSpan = document.createElement("span");
+            amountSpan.textContent = formatCents(tx.amountCents);
+            paysTd.appendChild(amountSpan);
+            if ((tx.roundedDownCents || 0) > 0 && Number.isFinite(tx.exactAmountCents)) {
+              const exactSpan = document.createElement("span");
+              exactSpan.className = "tx-exact";
+              exactSpan.textContent = `from ${formatCents(tx.exactAmountCents)}`;
+              paysTd.appendChild(exactSpan);
+            }
+
+            const receiverTd = document.createElement("td");
+            receiverTd.className = "col-receiver";
+            receiverTd.textContent = tx.receiver;
+
+            const checkTd = document.createElement("td");
+            checkTd.className = "col-check";
+            const label = document.createElement("label");
+            label.className = "paid-toggle";
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = isPaid;
+            cb.setAttribute("aria-label", `Mark ${tx.payer} pays ${formatCents(tx.amountCents)} to ${tx.receiver} as paid`);
+            const span = document.createElement("span");
+            span.className = "paid-toggle-text";
+            span.textContent = isPaid ? "Paid" : "Open";
+
+            cb.addEventListener("change", () => {
+              state.paidMap[txKey] = cb.checked;
+              tr.classList.toggle("is-paid", cb.checked);
+              span.textContent = cb.checked ? "Paid" : "Open";
+              saveToStorage();
+            });
+
+            label.append(cb, span);
+            checkTd.appendChild(label);
+            tr.append(payerTd, paysTd, receiverTd, checkTd);
+            dom.txBody.appendChild(tr);
+          });
+        }
+
+        if (roundedList.length > 0 || removedList.length > 0) {
+          const noteParts = [];
+          if (roundedList.length > 0) {
+            const droppedCents = Number.isFinite(res.totalRoundedDownCents)
+              ? res.totalRoundedDownCents
+              : roundedList.reduce((sum, t) => sum + (t.roundedDownCents || 0), 0);
+            noteParts.push(
+              `Payouts were always rounded down toward $0.00 (never up to the higher dollar; ${formatCents(droppedCents)} dropped across ${roundedList.length} ${roundedList.length === 1 ? "payout" : "payouts"}).`
+            );
+          }
+          if (removedList.length > 0) {
+            const removedSummary = removedList
+              .map((t) => `${t.payer} to ${t.receiver} (${formatCents(t.exactAmountCents)})`)
+              .join(", ");
+            noteParts.push(
+              `${removedList.length} ${removedList.length === 1 ? "payout" : "payouts"} under $1.00 rounded down to $0.00 and removed: ${removedSummary}.`
+            );
+          }
+          dom.txRoundingNote.textContent = "";
+          const strong = document.createElement("strong");
+          strong.textContent = "Rounding note: ";
+          dom.txRoundingNote.append(strong, document.createTextNode(noteParts.join(" ")));
+          dom.txRoundingNote.hidden = false;
+        } else {
+          dom.txRoundingNote.textContent = "";
+          dom.txRoundingNote.hidden = true;
+        }
+
+        dom.explainList.textContent = "";
+        res.steps.forEach((stepText) => {
+          const li = document.createElement("li");
+          li.textContent = stepText;
+          dom.explainList.appendChild(li);
+        });
+
+        dom.breakdownBody.textContent = "";
+        const sortedPlayers = [...res.players].sort((a, b) => (b.finalNetCents - a.finalNetCents) || a.name.localeCompare(b.name));
+        sortedPlayers.forEach((p) => {
+          const tr = document.createElement("tr");
+
+          const nameTd = document.createElement("td");
+          nameTd.textContent = p.name;
+
+          const rawTd = document.createElement("td");
+          rawTd.className = "col-num fig";
+          rawTd.textContent = formatSignedCents(p.rawNetCents);
+
+          const adjTd = document.createElement("td");
+          adjTd.className = "col-num fig";
+          adjTd.textContent = p.adjustmentCents === 0 ? "$0.00" : formatSignedCents(p.adjustmentCents);
+
+          const finalTd = document.createElement("td");
+          finalTd.className = "col-num fig";
+          finalTd.textContent = formatSignedCents(p.finalNetCents);
+          if (p.finalNetCents > 0) finalTd.classList.add("val-pos");
+          else if (p.finalNetCents < 0) finalTd.classList.add("val-neg");
+          else finalTd.classList.add("val-zero");
+
+          tr.append(nameTd, rawTd, adjTd, finalTd);
+          dom.breakdownBody.appendChild(tr);
+        });
+      }
+
+      function buildPlainTextSummary(res) {
+        const lines = [];
+        const headerBits = ["Settle Up", formatDisplayDate(res.date)];
+        if (res.place.trim()) headerBits.push(res.place.trim());
+        lines.push(headerBits.join(" | "));
+        lines.push("");
+        lines.push("Game Summary");
+        lines.push(`Buy-in Total: ${formatCents(res.buyInTotalCents)} (${res.buyInTotalCount} buy-ins)`);
+        lines.push(`Cash-out Total: ${formatCents(res.cashOutTotalCents)} (${res.cashOutTotalChips} chips)`);
+        lines.push(`Cash-out Difference: ${formatSignedCents(res.diffCents)}`);
+        lines.push("");
+        lines.push("Final Transactions");
+        const roundedList = Array.isArray(res.roundedTransactions) ? res.roundedTransactions : [];
+        const removedList = Array.isArray(res.removedTransactions) ? res.removedTransactions : [];
+        if (res.transactions.length === 0) {
+          lines.push(removedList.length > 0 ? "No transfers remain after removing payouts under $1.00." : "No transfers needed.");
+        } else {
+          res.transactions.forEach((tx) => {
+            const suffix = (tx.roundedDownCents || 0) > 0 && Number.isFinite(tx.exactAmountCents)
+              ? ` (rounded down from ${formatCents(tx.exactAmountCents)})`
+              : "";
+            lines.push(`${tx.payer} pays ${formatCents(tx.amountCents)} to ${tx.receiver}${suffix}`);
+          });
+        }
+        if (roundedList.length > 0 || removedList.length > 0) {
+          const noteBits = [];
+          if (roundedList.length > 0) {
+            const droppedCents = Number.isFinite(res.totalRoundedDownCents)
+              ? res.totalRoundedDownCents
+              : roundedList.reduce((sum, t) => sum + (t.roundedDownCents || 0), 0);
+            noteBits.push(`Payouts rounded down to whole dollars (${formatCents(droppedCents)} dropped)`);
+          }
+          if (removedList.length > 0) {
+            const removedSummary = removedList
+              .map((t) => `${t.payer} to ${t.receiver} (${formatCents(t.exactAmountCents)})`)
+              .join(", ");
+            noteBits.push(`Removed under $1.00: ${removedSummary}`);
+          }
+          lines.push(`Rounding Note: ${noteBits.join("; ")}.`);
+        }
+        lines.push("");
+        lines.push("Adjustment Notes");
+        res.steps.forEach((s, i) => {
+          lines.push(`${i + 1}. ${s}`);
+        });
+        return lines.join("\n");
+      }
+
+      function addPlayerRow(focusNew = true) {
+        const row = createRow("", "1", "");
+        state.rows.push(row);
+        renderRows();
+        saveToStorage();
+        if (focusNew) {
+          const input = dom.playerRows.querySelector(`input[name="playerName_${row.id}"]`);
+          if (input) input.focus();
+        }
+      }
+
+      function loadSampleGame() {
+        const snapshot = captureSnapshot();
+        state.date = getTodayISO();
+        state.place = "Example table, Maple Room";
+        state.rows = [
+          createRow("Maya", "2", "745"),
+          createRow("Devon", "3", "692"),
+          createRow("Elena", "4", "588"),
+          createRow("Priya", "1", "105"),
+          createRow("Carlos", "2", "178"),
+          createRow("Noah", "3", "146"),
+          createRow("Sam", "5", "254"),
+          createRow("Liam", "6", "4")
+        ];
+        state.paidMap = {};
+        state.isStale = false;
+        dom.gameDate.value = state.date;
+        dom.gamePlace.value = state.place;
+        dom.formFeedback.textContent = "";
+        renderRows();
+
+        const validPlayers = validateAllRows();
+        if (validPlayers) {
+          state.lastResult = calculateSettlement(validPlayers, {
+            date: state.date,
+            place: state.place,
+            centsPerBuyIn: getCurrentBuyInCents()
+          });
+          renderResults();
+        }
+        saveToStorage();
+        if (dom.helpDialog.open) {
+          closeHelp();
+        }
+        showUndo("Loaded sample 8-player game.", snapshot);
+      }
+
+      function startNewGame() {
+        const snapshot = captureSnapshot();
+        state.date = getTodayISO();
+        state.place = "";
+        state.rows = [createRow(), createRow(), createRow(), createRow()];
+        state.lastResult = null;
+        state.paidMap = {};
+        state.isStale = false;
+        dom.gameDate.value = state.date;
+        dom.gamePlace.value = state.place;
+        dom.formFeedback.textContent = "";
+        renderRows();
+        renderResults();
+        saveToStorage();
+        showUndo("Started a fresh game ledger.", snapshot);
+      }
+
+      dom.buyInDollarInput.addEventListener("input", () => {
+        state.buyInDollars = dom.buyInDollarInput.value;
+        const parsed = parseBuyInCents(state.buyInDollars);
+        if (parsed.valid) {
+          dom.buyInDollarInput.removeAttribute("aria-invalid");
+          dom.formFeedback.textContent = "";
+        } else {
+          dom.buyInDollarInput.setAttribute("aria-invalid", "true");
+        }
+        markStaleIfCalculated();
+        updateRateDisplays();
+        state.rows.forEach((row) => {
+          const tr = dom.playerRows.querySelector(`tr[data-row-id="${row.id}"]`);
+          if (tr) updateRowPreviewCells(tr, row);
+        });
+        updateLiveFooter();
+        saveToStorage();
+      });
+
+      dom.gameDate.addEventListener("input", () => {
+        state.date = dom.gameDate.value;
+        markStaleIfCalculated();
+        saveToStorage();
+      });
+
+      dom.gamePlace.addEventListener("input", () => {
+        state.place = dom.gamePlace.value;
+        markStaleIfCalculated();
+        saveToStorage();
+      });
+
+      dom.addPlayerBtn.addEventListener("click", () => addPlayerRow(true));
+      dom.emptyAddPlayerBtn.addEventListener("click", () => addPlayerRow(true));
+      dom.loadSampleBtn.addEventListener("click", loadSampleGame);
+      dom.newGameBtn.addEventListener("click", startNewGame);
+
+      dom.undoBtn.addEventListener("click", () => {
+        if (!undoSnapshot) return;
+        state = undoSnapshot;
+        hideUndo();
+        dom.gameDate.value = state.date;
+        dom.gamePlace.value = state.place;
+        dom.buyInDollarInput.value = state.buyInDollars;
+        dom.buyInDollarInput.removeAttribute("aria-invalid");
+        dom.formFeedback.textContent = "";
+        updateRateDisplays();
+        renderRows();
+        renderResults();
+        saveToStorage();
+      });
+
+      dom.form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const buyInRate = parseBuyInCents(state.buyInDollars);
+        if (!buyInRate.valid) {
+          dom.buyInDollarInput.setAttribute("aria-invalid", "true");
+          dom.formFeedback.textContent = `Enter a buy-in value between $${MIN_BUYIN_DOLLARS} and $${MAX_BUYIN_DOLLARS}.`;
+          dom.buyInDollarInput.focus();
+          return;
+        }
+        dom.buyInDollarInput.removeAttribute("aria-invalid");
+
+        const activePlayers = validateAllRows();
+        if (!activePlayers) return;
+
+        state.lastResult = calculateSettlement(activePlayers, {
+          date: state.date,
+          place: state.place,
+          centsPerBuyIn: buyInRate.cents
+        });
+        state.paidMap = {};
+        state.isStale = false;
+        renderResults();
+        saveToStorage();
+
+        const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        dom.resultsColumn.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+      });
+
+      dom.copySummaryBtn.addEventListener("click", async () => {
+        if (!state.lastResult) return;
+        const text = buildPlainTextSummary(state.lastResult);
+        let copied = false;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+            copied = true;
+          }
+        } catch (_err) {
+          copied = false;
+        }
+        if (!copied) {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          try {
+            copied = document.execCommand("copy");
+          } catch (_err) {
+            copied = false;
+          }
+          document.body.removeChild(ta);
+        }
+
+        const original = dom.copySummaryBtn.textContent;
+        dom.copySummaryBtn.textContent = copied ? "Copied" : "Copy failed";
+        window.setTimeout(() => {
+          dom.copySummaryBtn.textContent = original;
+        }, 2000);
+      });
+
+      function getCurrentTheme() {
+        return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+      }
+
+      function applyTheme(theme, persist = false) {
+        const next = theme === "dark" ? "dark" : "light";
+        document.documentElement.dataset.theme = next;
+        const isDark = next === "dark";
+        if (dom.themeToggleBtn) {
+          dom.themeToggleBtn.setAttribute("aria-pressed", String(isDark));
+          dom.themeToggleBtn.setAttribute("aria-label", isDark ? "Switch to light theme" : "Switch to dark theme");
+        }
+        if (dom.themeToggleLabel) {
+          dom.themeToggleLabel.textContent = isDark ? "Light" : "Dark";
+        }
+        if (dom.themeIconMoon) dom.themeIconMoon.hidden = isDark;
+        if (dom.themeIconSun) dom.themeIconSun.hidden = !isDark;
+        if (persist) {
+          try {
+            window.localStorage.setItem(THEME_STORAGE_KEY, next);
+          } catch (_err) {
+            // Ignore storage errors
+          }
+        }
+      }
+
+      if (dom.themeToggleBtn) {
+        dom.themeToggleBtn.addEventListener("click", () => {
+          applyTheme(getCurrentTheme() === "dark" ? "light" : "dark", true);
+        });
+      }
+
+      function openHelp() {
+        if (typeof dom.helpDialog.showModal === "function") {
+          dom.helpDialog.showModal();
+        } else {
+          dom.helpDialog.setAttribute("open", "");
+        }
+        dom.closeHelpBtn.focus();
+      }
+
+      function closeHelp() {
+        if (typeof dom.helpDialog.close === "function") {
+          dom.helpDialog.close();
+        } else {
+          dom.helpDialog.removeAttribute("open");
+        }
+        dom.openHelpBtn.focus();
+      }
+
+      dom.openHelpBtn.addEventListener("click", openHelp);
+      dom.closeHelpBtn.addEventListener("click", closeHelp);
+      dom.closeHelpFooterBtn.addEventListener("click", closeHelp);
+      dom.helpDialog.addEventListener("click", (event) => {
+        if (event.target === dom.helpDialog) {
+          closeHelp();
+        }
+      });
+
+      // Initialize theme and session state
+      applyTheme(getCurrentTheme(), false);
+      const restored = loadFromStorage();
+      if (!restored) {
+        state.date = getTodayISO();
+        state.rows = [createRow(), createRow(), createRow(), createRow()];
+      } else if (state.rows.length === 0) {
+        state.rows = [createRow(), createRow()];
+      }
+
+      dom.gameDate.value = state.date;
+      dom.gamePlace.value = state.place;
+      dom.buyInDollarInput.value = state.buyInDollars;
+      updateRateDisplays();
+      renderRows();
+      renderResults();
+    })();
+  </script>
+</body>
+</html>

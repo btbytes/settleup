@@ -12,7 +12,7 @@
 - **Live calculations**: Displays each player's `In $`, exact `Out $`, and `Raw net` alongside live footer totals as you type.
 - **Game summary & minimal settlements**: Clicking **Calculate settlement** produces:
   - **Game Summary**: `Buy-in Total`, `Cash-out Total`, and `Cash-out Difference` (in dollars and chips).
-  - **Final Transactions**: Minimal `Payer` → `Pays` → `Receiver` transfers with interactive `Paid` / `Open` checkboxes and a **Copy summary** button.
+  - **Final Transactions**: Minimal `Payer` → `Pays` → `Receiver` transfers with interactive `Paid` / `Open` checkboxes and **Copy `text` / `Report`** actions (`Report` copies a formatted WhatsApp-ready PNG card to the clipboard with `.png` download fallback; `text` copies the plain-text summary as a fallback).
   - **Player-by-player ledger breakdown**: Collapsible table showing each player's raw net, adjustment, and exact final net.
   - **Transparent explanation**: Step-by-step list under *How the final adjustment was done* plus an explicit **Rounding note** whenever payouts are rounded down or sub-`$1.00` transfers are removed.
 - **Sample game & convenience tools**:

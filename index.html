@@ -1177,6 +1177,54 @@ a {
   border-bottom: var(--rule-hair) solid var(--color-rule);
 }
 
+.tx-copy-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.tx-copy-prefix {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.btn-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--color-rule-2);
+  text-underline-offset: 0.22em;
+  cursor: pointer;
+  transition:
+    color var(--dur-micro) var(--ease-out),
+    text-decoration-color var(--dur-micro) var(--ease-out);
+}
+
+.btn-link::before {
+  content: "";
+  position: absolute;
+  inset: -6px -4px;
+}
+
+@media (hover: hover) {
+  .btn-link:hover:not(:disabled) {
+    color: var(--color-ink);
+    text-decoration-color: var(--color-accent-2);
+  }
+}
+
+.btn--report {
+  font-weight: 600;
+  padding-inline: var(--space-md);
+}
+
 .tx-table {
   width: 100%;
   border-collapse: collapse;
@@ -1700,7 +1748,17 @@ a {
           <section class="sheet" aria-labelledby="txHeading">
             <div class="tx-header">
               <h2 class="sheet-title" id="txHeading">Final transactions</h2>
-              <button type="button" class="btn btn--card" id="copySummaryBtn">Copy summary</button>
+              <div class="tx-copy-actions" role="group" aria-label="Copy settlement summary">
+                <span class="tx-copy-prefix">Copy</span>
+                <button type="button" class="btn-link" id="copyTextBtn" aria-label="Copy plain text summary to clipboard">text</button>
+                <button type="button" class="btn btn--primary btn--report" id="copySummaryBtn" aria-label="Copy PNG report to clipboard">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                  <span id="copySummaryLabel">Report</span>
+                </button>
+              </div>
             </div>
 
             <div id="txTableWrap">
@@ -1893,7 +1951,9 @@ a {
         txBody: document.getElementById("txBody"),
         txEmpty: document.getElementById("txEmpty"),
         txRoundingNote: document.getElementById("txRoundingNote"),
+        copyTextBtn: document.getElementById("copyTextBtn"),
         copySummaryBtn: document.getElementById("copySummaryBtn"),
+        copySummaryLabel: document.getElementById("copySummaryLabel"),
         explainList: document.getElementById("explainList"),
         breakdownBody: document.getElementById("breakdownBody")
       };
@@ -3128,38 +3188,687 @@ a {
         dom.resultsColumn.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
       });
 
-      dom.copySummaryBtn.addEventListener("click", async () => {
-        if (!state.lastResult) return;
-        const text = buildPlainTextSummary(state.lastResult);
-        let copied = false;
-        try {
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(text);
-            copied = true;
+      function roundRectPath(ctx, x, y, w, h, r) {
+        const radius = Math.min(r, w / 2, h / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.arcTo(x + w, y, x + w, y + h, radius);
+        ctx.arcTo(x + w, y + h, x, y + h, radius);
+        ctx.arcTo(x, y + h, x, y, radius);
+        ctx.arcTo(x, y, x + w, y, radius);
+        ctx.closePath();
+      }
+
+      function wrapCanvasText(ctx, text, maxWidth) {
+        const words = String(text).split(/\s+/).filter(Boolean);
+        if (words.length === 0) return [""];
+        const lines = [];
+        let current = words[0];
+        for (let i = 1; i < words.length; i += 1) {
+          const candidate = `${current} ${words[i]}`;
+          if (ctx.measureText(candidate).width <= maxWidth) {
+            current = candidate;
+          } else {
+            lines.push(current);
+            current = words[i];
           }
-        } catch (_err) {
-          copied = false;
         }
-        if (!copied) {
-          const ta = document.createElement("textarea");
-          ta.value = text;
-          ta.style.position = "fixed";
-          ta.style.opacity = "0";
-          document.body.appendChild(ta);
-          ta.select();
+        lines.push(current);
+        return lines;
+      }
+
+      function truncateCanvasText(ctx, text, maxWidth) {
+        const str = String(text);
+        if (ctx.measureText(str).width <= maxWidth) return str;
+        const ellipsis = "…";
+        let end = str.length - 1;
+        while (end > 0 && ctx.measureText(str.slice(0, end) + ellipsis).width > maxWidth) {
+          end -= 1;
+        }
+        return str.slice(0, end) + ellipsis;
+      }
+
+      function buildSummaryPngFilename(res) {
+        const datePart = /^\d{4}-\d{2}-\d{2}$/.test(res.date || "") ? res.date : getTodayISO();
+        const placeSlug = String(res.place || "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 28);
+        return placeSlug ? `settle-up-${datePart}-${placeSlug}.png` : `settle-up-${datePart}.png`;
+      }
+
+      function getSummaryPngPalette(isDark) {
+        if (isDark) {
+          return {
+            backdrop: "#171513",
+            card: "#24211E",
+            tint: "#2D2926",
+            border: "#3F3A35",
+            rule: "#36312D",
+            ink: "#F5F1EB",
+            ink2: "#D7CFC6",
+            muted: "#A89F95",
+            board: "#131110",
+            boardRule: "#302C29",
+            boardType: "#F8F5F0",
+            boardMuted: "#B5ACA3",
+            accent: "#EC8B74",
+            accentBg: "#382520",
+            pos: "#74CE98",
+            posBoard: "#7CD4A0",
+            neg: "#F08575",
+            negBoard: "#F28B7D",
+            warn: "#E7B76B",
+            warnBoard: "#E9B96E",
+            warnBg: "#31291D"
+          };
+        }
+        return {
+          backdrop: "#EFECE6",
+          card: "#FCFBF8",
+          tint: "#F3EFE8",
+          border: "#DCD6CC",
+          rule: "#E6E0D6",
+          ink: "#24201E",
+          ink2: "#423C38",
+          muted: "#6E665F",
+          board: "#252220",
+          boardRule: "#3D3835",
+          boardType: "#F8F5F0",
+          boardMuted: "#BDB5AC",
+          accent: "#E4826B",
+          accentBg: "#FBECE8",
+          pos: "#2B7A4B",
+          posBoard: "#7CD4A0",
+          neg: "#B83B2A",
+          negBoard: "#F28B7D",
+          warn: "#9A6318",
+          warnBoard: "#E9B96E",
+          warnBg: "#FBF4E4"
+        };
+      }
+
+      function renderSummaryToCanvas(res) {
+        const isDark = getCurrentTheme() === "dark";
+        const pal = getSummaryPngPalette(isDark);
+        const SCALE = 2;
+        const W = 540;
+        const OUTER_PAD = 20;
+        const CARD_X = OUTER_PAD;
+        const CARD_W = W - OUTER_PAD * 2;
+        const IN_PAD = 22;
+        const CONTENT_X = CARD_X + IN_PAD;
+        const CONTENT_W = CARD_W - IN_PAD * 2;
+
+        const FONT_SANS = '"General Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        const FONT_MONO = '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace';
+
+        const measureCanvas = document.createElement("canvas");
+        const mctx = measureCanvas.getContext("2d");
+
+        const roundedList = Array.isArray(res.roundedTransactions) ? res.roundedTransactions : [];
+        const removedList = Array.isArray(res.removedTransactions) ? res.removedTransactions : [];
+        const sortedPlayers = [...res.players].sort((a, b) => (b.finalNetCents - a.finalNetCents) || a.name.localeCompare(b.name));
+
+        const metaParts = [formatDisplayDate(res.date)];
+        if (res.place && res.place.trim()) metaParts.push(res.place.trim());
+        const metaLine = metaParts.join(" · ");
+        const rateCents = Number.isFinite(res.centsPerBuyIn) && res.centsPerBuyIn > 0
+          ? res.centsPerBuyIn
+          : DEFAULT_BUYIN_DOLLARS * 100;
+        const rateLine = `1 buy-in = ${CHIPS_PER_BUYIN} chips = ${formatCents(rateCents)}`;
+
+        // Pre-wrap text sections to calculate exact height
+        mctx.font = `400 13px ${FONT_SANS}`;
+        const metaLines = wrapCanvasText(mctx, metaLine, CONTENT_W - 92);
+
+        let roundingNoteLines = [];
+        if (roundedList.length > 0 || removedList.length > 0) {
+          const noteParts = [];
+          if (roundedList.length > 0) {
+            const droppedCents = Number.isFinite(res.totalRoundedDownCents)
+              ? res.totalRoundedDownCents
+              : roundedList.reduce((sum, t) => sum + (t.roundedDownCents || 0), 0);
+            noteParts.push(
+              `Payouts rounded down toward $0.00 (never up; ${formatCents(droppedCents)} dropped across ${roundedList.length} ${roundedList.length === 1 ? "payout" : "payouts"}).`
+            );
+          }
+          if (removedList.length > 0) {
+            const removedSummary = removedList
+              .map((t) => `${t.payer} → ${t.receiver} (${formatCents(t.exactAmountCents)})`)
+              .join(", ");
+            noteParts.push(
+              `Removed under $1.00: ${removedSummary}.`
+            );
+          }
+          mctx.font = `400 12px ${FONT_SANS}`;
+          roundingNoteLines = wrapCanvasText(mctx, `Rounding note: ${noteParts.join(" ")}`, CONTENT_W - 24);
+        }
+
+        mctx.font = `400 11.5px ${FONT_SANS}`;
+        const wrappedSteps = (res.steps || []).map((step, idx) =>
+          wrapCanvasText(mctx, `${idx + 1}. ${step}`, CONTENT_W)
+        );
+
+        // Compute section heights
+        const boardTopH = 22 + 24 + metaLines.length * 17 + 16 + 14;
+        const boardStatsH = 74;
+        const boardH = boardTopH + boardStatsH;
+
+        const txHeaderH = 38;
+        const txRowsH = res.transactions.length === 0
+          ? 44
+          : res.transactions.reduce((sum, tx) => sum + ((tx.roundedDownCents || 0) > 0 ? 52 : 42), 0);
+        const roundingBoxH = roundingNoteLines.length > 0 ? (roundingNoteLines.length * 16 + 20) : 0;
+        const txCardH = IN_PAD + txHeaderH + txRowsH + (roundingBoxH > 0 ? 12 + roundingBoxH : 0) + IN_PAD;
+
+        const breakdownHeaderH = 34 + 26;
+        const breakdownRowsH = sortedPlayers.length * 28;
+        const stepsGap = wrappedSteps.length > 0 ? 18 : 0;
+        const stepsTitleH = wrappedSteps.length > 0 ? 24 : 0;
+        const stepsBodyH = wrappedSteps.reduce((sum, lines) => sum + lines.length * 16 + 5, 0);
+        const detailCardH = IN_PAD + breakdownHeaderH + breakdownRowsH + stepsGap + stepsTitleH + stepsBodyH + IN_PAD;
+
+        const footerH = 32;
+        const totalH = OUTER_PAD + boardH + 14 + txCardH + 14 + detailCardH + footerH + OUTER_PAD - 8;
+
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(W * SCALE);
+        canvas.height = Math.round(totalH * SCALE);
+        const ctx = canvas.getContext("2d");
+        ctx.scale(SCALE, SCALE);
+        ctx.textBaseline = "alphabetic";
+
+        // Outer backdrop
+        ctx.fillStyle = pal.backdrop;
+        ctx.fillRect(0, 0, W, totalH);
+
+        let y = OUTER_PAD;
+
+        // 1. Dark Ink Summary Board
+        roundRectPath(ctx, CARD_X, y, CARD_W, boardH, 12);
+        ctx.fillStyle = pal.board;
+        ctx.fill();
+        ctx.strokeStyle = pal.boardRule;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Brand mark + Title
+        const chipCx = CONTENT_X + 12;
+        const chipCy = y + 32;
+        ctx.strokeStyle = pal.accent;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(chipCx, chipCy, 10, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(chipCx, chipCy, 5, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = pal.boardType;
+        ctx.font = `600 19px ${FONT_SANS}`;
+        ctx.textAlign = "left";
+        ctx.fillText("Settle Up", CONTENT_X + 30, y + 38);
+
+        // Stamp pill
+        const stampText = state.isStale ? "RECALCULATE" : "SETTLED";
+        ctx.font = `600 11px ${FONT_SANS}`;
+        const stampW = ctx.measureText(stampText).width + 18;
+        const stampX = CARD_X + CARD_W - IN_PAD - stampW;
+        const stampY = y + 20;
+        roundRectPath(ctx, stampX, stampY, stampW, 24, 6);
+        ctx.strokeStyle = state.isStale ? pal.warnBoard : pal.accent;
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+        ctx.fillStyle = state.isStale ? pal.warnBoard : pal.accent;
+        ctx.textAlign = "center";
+        ctx.fillText(stampText, stampX + stampW / 2, stampY + 16);
+
+        // Meta & rate lines
+        ctx.textAlign = "left";
+        ctx.fillStyle = pal.boardMuted;
+        ctx.font = `400 13px ${FONT_SANS}`;
+        let my = y + 58;
+        for (const line of metaLines) {
+          ctx.fillText(line, CONTENT_X, my);
+          my += 17;
+        }
+        ctx.font = `400 11.5px ${FONT_MONO}`;
+        ctx.fillText(rateLine, CONTENT_X, my + 2);
+
+        // Board divider
+        const divY = y + boardTopH;
+        ctx.strokeStyle = pal.boardRule;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(CONTENT_X, divY);
+        ctx.lineTo(CONTENT_X + CONTENT_W, divY);
+        ctx.stroke();
+
+        // 3 Summary Stats
+        const chipDiff = res.cashOutTotalChips - (res.buyInTotalCount * CHIPS_PER_BUYIN);
+        const diffColor = res.diffCents === 0 ? pal.posBoard : (res.diffCents < 0 ? pal.warnBoard : pal.negBoard);
+        const diffDetail = res.diffCents === 0
+          ? "Balanced table"
+          : (res.diffCents < 0 ? `${Math.abs(chipDiff)} chips missing` : `${Math.abs(chipDiff)} chips over`);
+
+        const stats = [
+          {
+            label: "Buy-in total",
+            value: formatCents(res.buyInTotalCents),
+            detail: `${res.buyInTotalCount} ${res.buyInTotalCount === 1 ? "buy-in" : "buy-ins"} (${(res.buyInTotalCount * CHIPS_PER_BUYIN).toLocaleString("en-US")})`,
+            color: pal.boardType
+          },
+          {
+            label: "Cash-out total",
+            value: formatCents(res.cashOutTotalCents),
+            detail: `${res.cashOutTotalChips.toLocaleString("en-US")} chips`,
+            color: pal.boardType
+          },
+          {
+            label: "Difference",
+            value: formatSignedCents(res.diffCents),
+            detail: diffDetail,
+            color: diffColor
+          }
+        ];
+
+        const colW = CONTENT_W / 3;
+        stats.forEach((st, i) => {
+          const sx = CONTENT_X + i * colW + (i > 0 ? 12 : 0);
+          if (i > 0) {
+            ctx.strokeStyle = pal.boardRule;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(CONTENT_X + i * colW, divY + 12);
+            ctx.lineTo(CONTENT_X + i * colW, y + boardH - 12);
+            ctx.stroke();
+          }
+          ctx.textAlign = "left";
+          ctx.fillStyle = pal.boardMuted;
+          ctx.font = `400 11.5px ${FONT_SANS}`;
+          ctx.fillText(st.label, sx, divY + 23);
+
+          ctx.fillStyle = st.color;
+          ctx.font = `600 19px ${FONT_MONO}`;
+          ctx.fillText(st.value, sx, divY + 46);
+
+          ctx.fillStyle = pal.boardMuted;
+          ctx.font = `400 11px ${FONT_SANS}`;
+          ctx.fillText(truncateCanvasText(ctx, st.detail, colW - (i > 0 ? 14 : 8)), sx, divY + 62);
+        });
+
+        y += boardH + 14;
+
+        // 2. Final Payouts Card
+        roundRectPath(ctx, CARD_X, y, CARD_W, txCardH, 12);
+        ctx.fillStyle = pal.card;
+        ctx.fill();
+        ctx.strokeStyle = pal.border;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        let ty = y + IN_PAD;
+        ctx.textAlign = "left";
+        ctx.fillStyle = pal.ink;
+        ctx.font = `600 16px ${FONT_SANS}`;
+        ctx.fillText("Final payouts", CONTENT_X, ty + 16);
+
+        const countText = res.transactions.length === 0
+          ? "No transfers"
+          : `${res.transactions.length} ${res.transactions.length === 1 ? "transfer" : "transfers"}`;
+        ctx.textAlign = "right";
+        ctx.fillStyle = pal.muted;
+        ctx.font = `500 12.5px ${FONT_SANS}`;
+        ctx.fillText(countText, CONTENT_X + CONTENT_W, ty + 16);
+
+        ty += 28;
+        ctx.strokeStyle = pal.border;
+        ctx.beginPath();
+        ctx.moveTo(CONTENT_X, ty);
+        ctx.lineTo(CONTENT_X + CONTENT_W, ty);
+        ctx.stroke();
+        ty += 10;
+
+        if (res.transactions.length === 0) {
+          ctx.textAlign = "left";
+          ctx.fillStyle = pal.muted;
+          ctx.font = `400 13.5px ${FONT_SANS}`;
+          const emptyMsg = removedList.length > 0
+            ? "No transfers remain after removing payouts under $1.00."
+            : "No transfers are needed for this game.";
+          ctx.fillText(emptyMsg, CONTENT_X, ty + 22);
+          ty += 44;
+        } else {
+          res.transactions.forEach((tx, idx) => {
+            const hasExact = (tx.roundedDownCents || 0) > 0 && Number.isFinite(tx.exactAmountCents);
+            const rowH = hasExact ? 52 : 42;
+            const txKey = `${tx.payer}|${tx.receiver}|${tx.amountCents}|${idx}`;
+            const isPaid = Boolean(state.paidMap[txKey]);
+
+            if (idx % 2 === 1) {
+              roundRectPath(ctx, CONTENT_X - 8, ty, CONTENT_W + 16, rowH, 6);
+              ctx.fillStyle = pal.tint;
+              ctx.fill();
+            }
+
+            const midY = hasExact ? ty + 23 : ty + 26;
+
+            // Right: payout amount
+            ctx.textAlign = "right";
+            ctx.fillStyle = isPaid ? pal.muted : pal.ink;
+            ctx.font = `600 17px ${FONT_MONO}`;
+            const amountStr = formatCents(tx.amountCents);
+            const amountW = ctx.measureText(amountStr).width;
+            ctx.fillText(amountStr, CONTENT_X + CONTENT_W, midY);
+
+            if (hasExact) {
+              ctx.fillStyle = pal.muted;
+              ctx.font = `400 11px ${FONT_MONO}`;
+              ctx.fillText(`from ${formatCents(tx.exactAmountCents)}`, CONTENT_X + CONTENT_W, midY + 15);
+            }
+
+            // Left: Payer -> Receiver (+ optional PAID pill)
+            let leftAvail = CONTENT_W - amountW - 18;
+            if (isPaid) leftAvail -= 48;
+
+            ctx.textAlign = "left";
+            ctx.font = `600 15px ${FONT_SANS}`;
+            const arrowStr = "  →  ";
+            const arrowW = ctx.measureText(arrowStr).width;
+            const maxEach = Math.max(60, (leftAvail - arrowW) / 2);
+            const payerStr = truncateCanvasText(ctx, tx.payer, maxEach);
+            const receiverStr = truncateCanvasText(ctx, tx.receiver, maxEach);
+
+            let lx = CONTENT_X;
+            ctx.fillStyle = isPaid ? pal.muted : pal.ink;
+            ctx.fillText(payerStr, lx, midY);
+            lx += ctx.measureText(payerStr).width;
+
+            ctx.fillStyle = pal.accent;
+            ctx.font = `600 15px ${FONT_SANS}`;
+            ctx.fillText(arrowStr, lx, midY);
+            lx += arrowW;
+
+            ctx.fillStyle = isPaid ? pal.muted : pal.ink;
+            ctx.fillText(receiverStr, lx, midY);
+            lx += ctx.measureText(receiverStr).width;
+
+            if (isPaid) {
+              const badgeX = lx + 8;
+              const badgeY = midY - 12;
+              roundRectPath(ctx, badgeX, badgeY, 38, 17, 4);
+              ctx.fillStyle = pal.accentBg;
+              ctx.fill();
+              ctx.fillStyle = pal.accent;
+              ctx.font = `600 9.5px ${FONT_SANS}`;
+              ctx.textAlign = "center";
+              ctx.fillText("PAID", badgeX + 19, badgeY + 12);
+            }
+
+            ty += rowH;
+          });
+        }
+
+        if (roundingNoteLines.length > 0) {
+          ty += 12;
+          roundRectPath(ctx, CONTENT_X, ty, CONTENT_W, roundingBoxH, 6);
+          ctx.fillStyle = pal.warnBg;
+          ctx.fill();
+          ctx.fillStyle = pal.warn;
+          ctx.fillRect(CONTENT_X, ty, 3, roundingBoxH);
+
+          ctx.textAlign = "left";
+          ctx.fillStyle = pal.ink2;
+          ctx.font = `400 12px ${FONT_SANS}`;
+          let ny = ty + 20;
+          for (const line of roundingNoteLines) {
+            ctx.fillText(line, CONTENT_X + 12, ny);
+            ny += 16;
+          }
+        }
+
+        y += txCardH + 14;
+
+        // 3. Player Breakdown + Adjustment Notes Card
+        roundRectPath(ctx, CARD_X, y, CARD_W, detailCardH, 12);
+        ctx.fillStyle = pal.card;
+        ctx.fill();
+        ctx.strokeStyle = pal.border;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        let dy = y + IN_PAD;
+        ctx.textAlign = "left";
+        ctx.fillStyle = pal.ink;
+        ctx.font = `600 15px ${FONT_SANS}`;
+        ctx.fillText("Player breakdown", CONTENT_X, dy + 15);
+        dy += 28;
+
+        // Column X positions
+        const colInX = CONTENT_X + CONTENT_W * 0.44;
+        const colOutX = CONTENT_X + CONTENT_W * 0.62;
+        const colAdjX = CONTENT_X + CONTENT_W * 0.80;
+        const colNetX = CONTENT_X + CONTENT_W;
+        const maxNameW = CONTENT_W * 0.34;
+
+        ctx.fillStyle = pal.muted;
+        ctx.font = `500 11px ${FONT_SANS}`;
+        ctx.textAlign = "left";
+        ctx.fillText("Player", CONTENT_X, dy + 12);
+        ctx.textAlign = "right";
+        ctx.fillText("In $", colInX, dy + 12);
+        ctx.fillText("Out $", colOutX, dy + 12);
+        ctx.fillText("Adj", colAdjX, dy + 12);
+        ctx.fillText("Final net", colNetX, dy + 12);
+
+        dy += 20;
+        ctx.strokeStyle = pal.border;
+        ctx.beginPath();
+        ctx.moveTo(CONTENT_X, dy);
+        ctx.lineTo(CONTENT_X + CONTENT_W, dy);
+        ctx.stroke();
+        dy += 6;
+
+        sortedPlayers.forEach((p, idx) => {
+          const rowY = dy + 17;
+          ctx.textAlign = "left";
+          ctx.fillStyle = pal.ink;
+          ctx.font = `500 12.5px ${FONT_SANS}`;
+          ctx.fillText(truncateCanvasText(ctx, p.name, maxNameW), CONTENT_X, rowY);
+
+          ctx.textAlign = "right";
+          ctx.font = `400 12px ${FONT_MONO}`;
+          ctx.fillStyle = pal.ink2;
+          ctx.fillText(formatCents(p.buyInCents), colInX, rowY);
+          ctx.fillText(formatCents(p.cashOutCents), colOutX, rowY);
+          ctx.fillStyle = p.adjustmentCents === 0 ? pal.muted : pal.ink2;
+          ctx.fillText(p.adjustmentCents === 0 ? "$0.00" : formatSignedCents(p.adjustmentCents), colAdjX, rowY);
+
+          ctx.font = `600 12px ${FONT_MONO}`;
+          ctx.fillStyle = p.finalNetCents > 0 ? pal.pos : (p.finalNetCents < 0 ? pal.neg : pal.muted);
+          ctx.fillText(formatSignedCents(p.finalNetCents), colNetX, rowY);
+
+          dy += 28;
+          if (idx < sortedPlayers.length - 1) {
+            ctx.strokeStyle = pal.rule;
+            ctx.beginPath();
+            ctx.moveTo(CONTENT_X, dy);
+            ctx.lineTo(CONTENT_X + CONTENT_W, dy);
+            ctx.stroke();
+          }
+        });
+
+        if (wrappedSteps.length > 0) {
+          dy += 18;
+          ctx.strokeStyle = pal.border;
+          ctx.beginPath();
+          ctx.moveTo(CONTENT_X, dy - 10);
+          ctx.lineTo(CONTENT_X + CONTENT_W, dy - 10);
+          ctx.stroke();
+
+          ctx.textAlign = "left";
+          ctx.fillStyle = pal.ink;
+          ctx.font = `600 13px ${FONT_SANS}`;
+          ctx.fillText("How the final adjustment was done", CONTENT_X, dy + 10);
+          dy += 24;
+
+          ctx.fillStyle = pal.muted;
+          ctx.font = `400 11.5px ${FONT_SANS}`;
+          for (const lines of wrappedSteps) {
+            for (const line of lines) {
+              ctx.fillText(line, CONTENT_X, dy + 11);
+              dy += 16;
+            }
+            dy += 5;
+          }
+        }
+
+        // 4. Footer caption
+        y += detailCardH + 22;
+        ctx.textAlign = "center";
+        ctx.fillStyle = pal.muted;
+        ctx.font = `400 11px ${FONT_SANS}`;
+        ctx.fillText("Settle Up · Calculated locally in browser", W / 2, y);
+
+        return canvas;
+      }
+
+      function canvasToPngBlob(canvas) {
+        return new Promise((resolve, reject) => {
+          if (typeof canvas.toBlob === "function") {
+            canvas.toBlob((blob) => {
+              if (blob) resolve(blob);
+              else reject(new Error("PNG encoding failed"));
+            }, "image/png");
+          } else {
+            try {
+              const dataUrl = canvas.toDataURL("image/png");
+              const binary = atob(dataUrl.split(",")[1]);
+              const bytes = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i += 1) {
+                bytes[i] = binary.charCodeAt(i);
+              }
+              resolve(new Blob([bytes], { type: "image/png" }));
+            } catch (err) {
+              reject(err);
+            }
+          }
+        });
+      }
+
+      function triggerBlobDownload(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.rel = "noopener";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+      }
+
+      let copyFeedbackTimer = null;
+      let copyTextFeedbackTimer = null;
+
+      function setCopySummaryFeedback(message) {
+        if (!dom.copySummaryLabel) return;
+        const original = "Report";
+        dom.copySummaryLabel.textContent = message;
+        if (copyFeedbackTimer) window.clearTimeout(copyFeedbackTimer);
+        copyFeedbackTimer = window.setTimeout(() => {
+          dom.copySummaryLabel.textContent = original;
+          copyFeedbackTimer = null;
+        }, 2400);
+      }
+
+      function setCopyTextFeedback(message) {
+        if (!dom.copyTextBtn) return;
+        const original = "text";
+        dom.copyTextBtn.textContent = message;
+        if (copyTextFeedbackTimer) window.clearTimeout(copyTextFeedbackTimer);
+        copyTextFeedbackTimer = window.setTimeout(() => {
+          dom.copyTextBtn.textContent = original;
+          copyTextFeedbackTimer = null;
+        }, 2000);
+      }
+
+      if (dom.copyTextBtn) {
+        dom.copyTextBtn.addEventListener("click", async () => {
+          if (!state.lastResult) return;
+          const text = buildPlainTextSummary(state.lastResult);
+          let copied = false;
           try {
-            copied = document.execCommand("copy");
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(text);
+              copied = true;
+            }
           } catch (_err) {
             copied = false;
           }
-          document.body.removeChild(ta);
-        }
+          if (!copied) {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            try {
+              copied = document.execCommand("copy");
+            } catch (_err) {
+              copied = false;
+            }
+            document.body.removeChild(ta);
+          }
+          setCopyTextFeedback(copied ? "copied!" : "failed");
+        });
+      }
 
-        const original = dom.copySummaryBtn.textContent;
-        dom.copySummaryBtn.textContent = copied ? "Copied" : "Copy failed";
-        window.setTimeout(() => {
-          dom.copySummaryBtn.textContent = original;
-        }, 2000);
+      dom.copySummaryBtn.addEventListener("click", async () => {
+        if (!state.lastResult) return;
+        const res = state.lastResult;
+        const filename = buildSummaryPngFilename(res);
+
+        try {
+          const canvas = renderSummaryToCanvas(res);
+          const blobPromise = canvasToPngBlob(canvas);
+
+          if (navigator.clipboard && typeof navigator.clipboard.write === "function" && typeof ClipboardItem === "function") {
+            let copiedImage = false;
+            // Pass Promise<Blob> synchronously inside the click gesture so Safari/iOS preserves clipboard activation.
+            try {
+              await navigator.clipboard.write([
+                new ClipboardItem({ "image/png": blobPromise })
+              ]);
+              copiedImage = true;
+            } catch (_promiseItemErr) {
+              // Fallback for browsers whose ClipboardItem requires a resolved Blob.
+              try {
+                const resolvedBlob = await blobPromise;
+                await navigator.clipboard.write([
+                  new ClipboardItem({ "image/png": resolvedBlob })
+                ]);
+                copiedImage = true;
+              } catch (_resolvedItemErr) {
+                copiedImage = false;
+              }
+            }
+
+            if (copiedImage) {
+              setCopySummaryFeedback("Copied PNG");
+              return;
+            }
+          }
+
+          // Fallback when Clipboard image write is unsupported or blocked (e.g., insecure file:// context).
+          const blob = await blobPromise;
+          triggerBlobDownload(blob, filename);
+          setCopySummaryFeedback("PNG saved");
+        } catch (_err) {
+          setCopySummaryFeedback("Copy failed");
+        }
       });
 
       function getCurrentTheme() {
